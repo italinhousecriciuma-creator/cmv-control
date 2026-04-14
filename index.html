@@ -1233,15 +1233,23 @@ function processarExcel(rows) {
     };
     
     const findExt = nome => {
-        const nL = nome.toLowerCase();
-        return DB.extras.find(e => e.nome.toLowerCase() === nL || e.nome.toLowerCase().includes(nL) || nL.includes(e.nome.toLowerCase()));
+        const nL = nome.toLowerCase().trim();
+        // Limpar nome: remover "- " inicial e texto entre parênteses
+        const nLimpo = nL.replace(/^-\s*/, '').replace(/\s*\(.*\)/g, '').trim();
+        return DB.extras.find(e => {
+            const eL = e.nome.toLowerCase();
+            return eL === nL || eL === nLimpo || eL.includes(nLimpo) || nLimpo.includes(eL);
+        });
     };
     
     const isExtraAvulso = n => {
-        const nL = n.toLowerCase();
-        return nL.startsWith('extra ') || nL.includes('pimenta do reino') || nL.includes('preciso de talher') || 
+        const nL = n.toLowerCase().trim();
+        // Detectar "Extra X" em qualquer posição (pode vir com "- " na frente)
+        const isExtra = nL.includes('extra ') || nL.startsWith('- extra');
+        return isExtra || nL.includes('pimenta do reino') || nL.includes('preciso de talher') || 
                nL.includes('acompanhamento + sobremesa') || nL.includes('espaguete grano duro') ||
-               nL.includes('penne integral') || nL.includes('nhoque recheado') || nL.includes('polenta');
+               nL.includes('penne integral') || nL.includes('nhoque recheado');
+        // NOTA: "polenta" removido pois "Polenta com Ragu de Costela" é produto
     };
     
     const isSobremesaItem = n => {
