@@ -1220,7 +1220,6 @@ const salvarProdutoAnterior=()=>{if(!produtoAtual)return;if(secaoAtual==='macarr
 
 const processarItemDireto=(subNome,qtd,origem)=>{const subNomeL=subNome.toLowerCase();if(subNomeL.includes('nhoque')&&!subNomeL.includes('recheado')&&!subNomeL.includes('tradicional'))return;let tam='G';if(subNomeL.includes('box kids')||subNomeL.includes('box p')||subNomeL.includes('450g')||isBoiadeirinha)tam='P';else if(subNomeL.includes('box g')||subNomeL.includes('800g')||subNomeL.includes('750g'))tam='G';else return;const sabores=['bolonhesa','camarão','queijos','costela','ragu','cheddar','bacon','frango','pomodoro','broccoli','funghi','parisiense'];let temSabor=false;for(const s of sabores)if(subNomeL.includes(s)){temSabor=true;break;}if(!temSabor)return;const prod=findProd(subNome,tam,'macarrao');if(prod)addProdVenda(prod,qtd,0,origem,tam);};
 
-const sabores = ['bolonhesa','carbonara','camarão','cheddar','queijos','costela','ragu','frango','pomodoro','broccoli','funghi','parisiense','alfredo','primavera','vegetariano','siciliano','napolitano'];
 
 for(let i=5;i<data.length;i++){
 const row=data[i];if(!row||!row[0])continue;
@@ -1231,11 +1230,11 @@ const nomeL=nome.toLowerCase();
 // Linhas em branco - ignorar
 if(!nome.trim())continue;
 
-// CRITÉRIO: Se tem quantidade (qtd > 0) = É ITEM, senão = É CATEGORIA
-const isItem = qtd > 0;
+// CRITÉRIO: Se começa com hífen = É SUB-ITEM, senão = É CATEGORIA
+const isSubItem = nome.startsWith('-') || nome.startsWith(' -');
 
-if(!isItem){
-// LINHA SEM QUANTIDADE = CATEGORIA/SEÇÃO
+if(!isSubItem){
+// LINHA SEM HÍFEN = CATEGORIA/SEÇÃO (mesmo que tenha quantidade, é o total da categoria)
 salvarProdutoAnterior();
 if(valor>0)vendas.totalFat+=valor;
 isBoiadeirinha=nomeL.includes('boiadeirinha');
@@ -1246,14 +1245,15 @@ else if(nomeL.includes('docinho')||nomeL.includes('vai um docinho'))secaoAtual='
 else if(nomeL.includes('entradas e acompanhamentos'))secaoAtual='extras';
 else if(nomeL.includes('molhinho'))secaoAtual='extras';
 else if(nomeL.includes('macarrão')&&nomeL.includes('box g'))secaoAtual='macarrao_g';
-else if(nomeL.includes('melhor macarrão')&&!nomeL.includes('box g'))secaoAtual='macarrao';
+else if(nomeL.includes('macarrão')&&!nomeL.includes('box g')&&!nomeL.includes('combo')&&!nomeL.includes('diversos'))secaoAtual='macarrao';
 else if(nomeL.includes('risoto')&&!nomeL.includes('combo'))secaoAtual='risoto';
 else if(nomeL.includes('nhoque')&&!nomeL.includes('combo'))secaoAtual='nhoque';
 else if(nomeL.includes('combo')||nomeL.includes('diversos')||nomeL.includes('oferta')||nomeL.includes('compre'))secaoAtual='combos';
 continue;}
 
-// LINHA COM QUANTIDADE = ITEM REAL - processar
+// LINHA COM HÍFEN = SUB-ITEM - processar
 const subNome=nome.replace(/^[-\s]+/,'').trim(),subNomeL=subNome.toLowerCase();
+if(qtd <= 0) continue; // Pular se não tem quantidade
 
 // 1. EXTRAS AVULSOS - em QUALQUER seção (Extra X, Pimenta do Reino, Talheres, etc.)
 if(isExtraAvulso(subNome)&&qtd>0&&valor>0){
