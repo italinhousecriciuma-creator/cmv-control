@@ -1224,15 +1224,19 @@ for(let i=5;i<data.length;i++){
 const row=data[i];if(!row||!row[0])continue;
 const nome=String(row[0]).trim(),qtd=parseInt(row[1])||0,valor=parseFloat(row[2])||0;
 if(!nome||nome==='nan')continue;
-const nomeL=nome.toLowerCase(),isSubItem=nome.startsWith('-')||nome.startsWith(' ');
+const nomeL=nome.toLowerCase();
 
-// SEÇÃO PRINCIPAL (não é sub-item)
+// Linhas em branco ou sem conteúdo útil - ignorar
+if(!nome.trim())continue;
+
+// LINHA SEM HÍFEN = CATEGORIA/SEÇÃO (não processar como item)
+const isSubItem=nome.startsWith('-')||nome.startsWith(' -');
 if(!isSubItem){
 salvarProdutoAnterior();
 if(valor>0)vendas.totalFat+=valor;
 isBoiadeirinha=nomeL.includes('boiadeirinha');
 
-// Detectar seção
+// Detectar seção pela categoria mãe
 if(nomeL.includes('bebida')||nomeL.includes('vai uma bebida'))secaoAtual='bebidas';
 else if(nomeL.includes('docinho')||nomeL.includes('vai um docinho'))secaoAtual='sobremesas';
 else if(nomeL.includes('entradas e acompanhamentos'))secaoAtual='extras';
@@ -1242,10 +1246,10 @@ else if(nomeL.includes('melhor macarrão')&&!nomeL.includes('box g'))secaoAtual=
 else if(nomeL.includes('risoto')&&!nomeL.includes('combo'))secaoAtual='risoto';
 else if(nomeL.includes('nhoque')&&!nomeL.includes('combo'))secaoAtual='nhoque';
 else if(nomeL.includes('combo')||nomeL.includes('diversos')||nomeL.includes('oferta')||nomeL.includes('compre'))secaoAtual='combos';
-else secaoAtual='outros';
+// NÃO mudar seção para 'outros' - manter a seção atual
 continue;}
 
-// SUB-ITENS
+// LINHA COM HÍFEN = ITEM REAL (subcategoria) - processar
 const subNome=nome.replace(/^[-\s]+/,'').trim(),subNomeL=subNome.toLowerCase();
 
 // 1. EXTRAS AVULSOS - em QUALQUER seção (Extra X, Pimenta do Reino, Talheres, etc.)
