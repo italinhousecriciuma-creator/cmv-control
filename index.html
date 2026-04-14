@@ -512,37 +512,63 @@ sb.auth.onAuthStateChange(async (event, session) => {
 // ========================================
 // LOAD DATA
 // ========================================
+async function fetchWithTimeout(promise, ms = 10000) {
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), ms));
+    return Promise.race([promise, timeout]);
+}
+
 async function loadAll() {
     console.log('loadAll: início');
     loading(true);
     try {
         console.log('loadAll: carregando perfil...');
-        const { data: perfilData, error: perfilError } = await sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle();
-        console.log('loadAll: perfil', perfilData, perfilError);
+        let perfilData = null;
+        try {
+            const result = await fetchWithTimeout(sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(), 5000);
+            perfilData = result.data;
+            console.log('loadAll: perfil carregado', perfilData);
+        } catch(e) {
+            console.log('loadAll: timeout/erro no perfil, usando padrão', e.message);
+            perfilData = null;
+        }
         perfil = perfilData || { taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0 };
         
         console.log('loadAll: carregando tabelas...');
-        const { data: produtos } = await sb.from('produtos').select('*').order('nome');
-        DB.produtos = produtos || [];
+        try {
+            const r1 = await fetchWithTimeout(sb.from('produtos').select('*').order('nome'), 5000);
+            DB.produtos = r1.data || [];
+        } catch(e) { console.log('produtos timeout'); DB.produtos = []; }
         console.log('loadAll: produtos', DB.produtos.length);
         
-        const { data: bebidas } = await sb.from('bebidas').select('*').order('nome');
-        DB.bebidas = bebidas || [];
+        try {
+            const r2 = await fetchWithTimeout(sb.from('bebidas').select('*').order('nome'), 5000);
+            DB.bebidas = r2.data || [];
+        } catch(e) { DB.bebidas = []; }
         
-        const { data: sobremesas } = await sb.from('sobremesas').select('*').order('nome');
-        DB.sobremesas = sobremesas || [];
+        try {
+            const r3 = await fetchWithTimeout(sb.from('sobremesas').select('*').order('nome'), 5000);
+            DB.sobremesas = r3.data || [];
+        } catch(e) { DB.sobremesas = []; }
         
-        const { data: extras } = await sb.from('extras').select('*').order('nome');
-        DB.extras = extras || [];
+        try {
+            const r4 = await fetchWithTimeout(sb.from('extras').select('*').order('nome'), 5000);
+            DB.extras = r4.data || [];
+        } catch(e) { DB.extras = []; }
         
-        const { data: ingredientes } = await sb.from('ingredientes').select('*').order('nome');
-        DB.ingredientes = ingredientes || [];
+        try {
+            const r5 = await fetchWithTimeout(sb.from('ingredientes').select('*').order('nome'), 5000);
+            DB.ingredientes = r5.data || [];
+        } catch(e) { DB.ingredientes = []; }
         
-        const { data: fichas } = await sb.from('fichas').select('*');
-        DB.fichas = fichas || [];
+        try {
+            const r6 = await fetchWithTimeout(sb.from('fichas').select('*'), 5000);
+            DB.fichas = r6.data || [];
+        } catch(e) { DB.fichas = []; }
         
-        const { data: vendas } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
-        DB.vendas = vendas || [];
+        try {
+            const r7 = await fetchWithTimeout(sb.from('vendas').select('*').order('created_at', { ascending: false }), 5000);
+            DB.vendas = r7.data || [];
+        } catch(e) { DB.vendas = []; }
         
         console.log('loadAll: calculando custos...');
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
