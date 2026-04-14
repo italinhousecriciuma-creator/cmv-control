@@ -510,27 +510,31 @@ async function loadAll() {
     loading(true);
     try {
         // Carregar perfil
-        const { data: perfilData } = await sb.from('perfis').select('*').single();
+        const { data: perfilData, error: perfilError } = await sb.from('perfis').select('*').maybeSingle();
+        if (perfilError) console.error('Erro perfil:', perfilError);
         perfil = perfilData || {};
         
-        // Carregar dados
-        const [produtos, bebidas, sobremesas, extras, ingredientes, fichas, vendas] = await Promise.all([
-            sb.from('produtos').select('*').order('nome'),
-            sb.from('bebidas').select('*').order('nome'),
-            sb.from('sobremesas').select('*').order('nome'),
-            sb.from('extras').select('*').order('nome'),
-            sb.from('ingredientes').select('*').order('nome'),
-            sb.from('fichas').select('*'),
-            sb.from('vendas').select('*').order('created_at', { ascending: false })
-        ]);
+        // Carregar dados individualmente
+        const { data: produtos } = await sb.from('produtos').select('*').order('nome');
+        DB.produtos = produtos || [];
         
-        DB.produtos = produtos.data || [];
-        DB.bebidas = bebidas.data || [];
-        DB.sobremesas = sobremesas.data || [];
-        DB.extras = extras.data || [];
-        DB.ingredientes = ingredientes.data || [];
-        DB.fichas = fichas.data || [];
-        DB.vendas = vendas.data || [];
+        const { data: bebidas } = await sb.from('bebidas').select('*').order('nome');
+        DB.bebidas = bebidas || [];
+        
+        const { data: sobremesas } = await sb.from('sobremesas').select('*').order('nome');
+        DB.sobremesas = sobremesas || [];
+        
+        const { data: extras } = await sb.from('extras').select('*').order('nome');
+        DB.extras = extras || [];
+        
+        const { data: ingredientes } = await sb.from('ingredientes').select('*').order('nome');
+        DB.ingredientes = ingredientes || [];
+        
+        const { data: fichas } = await sb.from('fichas').select('*');
+        DB.fichas = fichas || [];
+        
+        const { data: vendas } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
+        DB.vendas = vendas || [];
         
         // Calcular custo das fichas
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
@@ -539,6 +543,7 @@ async function loadAll() {
         carregarTaxas();
         renderAll();
     } catch (e) {
+        console.error('Erro geral:', e);
         toast('Erro ao carregar: ' + e.message, true);
     }
     loading(false);
