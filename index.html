@@ -378,7 +378,7 @@ const DB = { produtos: [], bebidas: [], sobremesas: [], extras: [], ingredientes
 let filterText = {};
 let chartCMV = null;
 let importData = null;
-let isLoading = false;
+
 
 // ========================================
 // UTILS
@@ -490,20 +490,20 @@ async function handleLogout() {
 // ========================================
 // INIT
 // ========================================
+let hasLoaded = false;
 sb.auth.onAuthStateChange(async (event, session) => {
-    console.log('Auth event:', event);
-    if (session?.user && !isLoading) {
+    if (session?.user) {
         currentUser = session.user;
         $('auth-screen').style.display = 'none';
         $('app-screen').classList.add('visible');
         $('user-email').textContent = currentUser.email;
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-            isLoading = true;
+        if (!hasLoaded) {
+            hasLoaded = true;
             await loadAll();
-            isLoading = false;
         }
-    } else if (!session) {
+    } else {
         currentUser = null;
+        hasLoaded = false;
         $('auth-screen').style.display = 'flex';
         $('app-screen').classList.remove('visible');
     }
@@ -514,88 +514,42 @@ sb.auth.onAuthStateChange(async (event, session) => {
 // ========================================
 async function loadAll() {
     loading(true);
-    console.log('Iniciando loadAll...');
-    console.log('User:', currentUser?.id);
     try {
         // Carregar perfil
-        console.log('Carregando perfil...');
-        const perfilPromise = sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
-        let perfilData = null, perfilError = null;
-        try {
-            const result = await Promise.race([perfilPromise, timeoutPromise]);
-            perfilData = result.data;
-            perfilError = result.error;
-        } catch(e) {
-            console.error('Timeout ao carregar perfil:', e);
-            // Criar perfil se não existe
-            const { data: novoPerfil } = await sb.from('perfis').insert({ 
-                user_id: currentUser.id, 
-                restaurante_nome: 'Meu Restaurante',
-                taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0
-            }).select().single();
-            perfilData = novoPerfil;
-        }
-        if (!perfilData && !perfilError) {
-            // Perfil não existe, criar
-            console.log('Perfil não encontrado, criando...');
-            const { data: novoPerfil } = await sb.from('perfis').insert({ 
-                user_id: currentUser.id, 
-                restaurante_nome: 'Meu Restaurante',
-                taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0
-            }).select().single();
-            perfilData = novoPerfil;
-        }
-        console.log('Perfil:', perfilData, 'Erro:', perfilError);
-        perfil = perfilData || {};
+        const { data: perfilData } = await sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle();
+        perfil = perfilData || { taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0 };
         
-        // Carregar dados individualmente
-        console.log('Carregando produtos...');
-        const { data: produtos, error: e1 } = await sb.from('produtos').select('*').order('nome');
-        console.log('Produtos:', produtos?.length, 'Erro:', e1);
+        // Carregar dados
+        const { data: produtos } = await sb.from('produtos').select('*').order('nome');
         DB.produtos = produtos || [];
         
-        console.log('Carregando bebidas...');
-        const { data: bebidas, error: e2 } = await sb.from('bebidas').select('*').order('nome');
-        console.log('Bebidas:', bebidas?.length, 'Erro:', e2);
+        const { data: bebidas } = await sb.from('bebidas').select('*').order('nome');
         DB.bebidas = bebidas || [];
         
-        console.log('Carregando sobremesas...');
-        const { data: sobremesas, error: e3 } = await sb.from('sobremesas').select('*').order('nome');
-        console.log('Sobremesas:', sobremesas?.length, 'Erro:', e3);
+        const { data: sobremesas } = await sb.from('sobremesas').select('*').order('nome');
         DB.sobremesas = sobremesas || [];
         
-        console.log('Carregando extras...');
-        const { data: extras, error: e4 } = await sb.from('extras').select('*').order('nome');
-        console.log('Extras:', extras?.length, 'Erro:', e4);
+        const { data: extras } = await sb.from('extras').select('*').order('nome');
         DB.extras = extras || [];
         
-        console.log('Carregando ingredientes...');
-        const { data: ingredientes, error: e5 } = await sb.from('ingredientes').select('*').order('nome');
-        console.log('Ingredientes:', ingredientes?.length, 'Erro:', e5);
+        const { data: ingredientes } = await sb.from('ingredientes').select('*').order('nome');
         DB.ingredientes = ingredientes || [];
         
-        console.log('Carregando fichas...');
-        const { data: fichas, error: e6 } = await sb.from('fichas').select('*');
-        console.log('Fichas:', fichas?.length, 'Erro:', e6);
+        const { data: fichas } = await sb.from('fichas').select('*');
         DB.fichas = fichas || [];
         
-        console.log('Carregando vendas...');
-        const { data: vendas, error: e7 } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
-        console.log('Vendas:', vendas?.length, 'Erro:', e7);
+        const { data: vendas } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
         DB.vendas = vendas || [];
         
         // Calcular custo das fichas
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
         
-        console.log('Carregando taxas e renderizando...');
-        // Carregar taxas do perfil
+        // Carregar taxas e renderizar
         carregarTaxas();
         renderAll();
-        console.log('loadAll concluído!');
     } catch (e) {
-        console.error('Erro geral:', e);
-        toast('Erro ao carregar: ' + e.message, true);
+        console.error('Erro:', e);
+        toast('Erro ao carregar', true);
     }
     loading(false);
 }
@@ -1547,18 +1501,7 @@ async function salvarImport() {
 }
 
 // Init
-document.addEventListener('DOMContentLoaded', () => {
-    // Check if already logged in
-    sb.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-            currentUser = session.user;
-            $('auth-screen').style.display = 'none';
-            $('app-screen').classList.add('visible');
-            $('user-email').textContent = currentUser.email;
-            loadAll();
-        }
-    });
-});
+// Init já é feito pelo onAuthStateChange
 </script>
 </body>
 </html>
