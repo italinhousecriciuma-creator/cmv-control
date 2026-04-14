@@ -367,7 +367,7 @@ td{font-size:0.9rem;}
 const SUPABASE_URL = 'https://jowomcluexjbibioytuw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impvd29tY2x1ZXhqYmliaW95dHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMzg4NzQsImV4cCI6MjA5MTcxNDg3NH0.vIp064WCYvPWCJjHKdqryMUaOsFK5KKfg0dxv_tEyO4'; // Será substituído
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ========================================
 // STATE
@@ -427,7 +427,7 @@ async function handleLogin(e) {
     $('login-btn').disabled = true;
     $('login-btn').textContent = 'Entrando...';
     
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
     
     $('login-btn').disabled = false;
     $('login-btn').textContent = 'Entrar';
@@ -445,7 +445,7 @@ async function handleSignup(e) {
     $('signup-btn').disabled = true;
     $('signup-btn').textContent = 'Criando...';
     
-    const { data, error } = await supabase.auth.signUp({ 
+    const { data, error } = await sb.auth.signUp({ 
         email, 
         password,
         options: { data: { restaurante_nome: restaurante } }
@@ -459,7 +459,7 @@ async function handleSignup(e) {
     } else if (data.user) {
         // Atualizar nome do restaurante no perfil
         setTimeout(async () => {
-            await supabase.from('perfis').update({ restaurante_nome: restaurante }).eq('user_id', data.user.id);
+            await sb.from('perfis').update({ restaurante_nome: restaurante }).eq('user_id', data.user.id);
         }, 1000);
         toast('Conta criada com sucesso!');
     }
@@ -470,7 +470,7 @@ async function handleForgotPassword(e) {
     const email = prompt('Digite seu email para recuperar a senha:');
     if (!email) return;
     
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const { error } = await sb.auth.resetPasswordForEmail(email);
     if (error) {
         toast(error.message, true);
     } else {
@@ -479,7 +479,7 @@ async function handleForgotPassword(e) {
 }
 
 async function handleLogout() {
-    await supabase.auth.signOut();
+    await sb.auth.signOut();
     currentUser = null;
     perfil = null;
     $('auth-screen').style.display = 'flex';
@@ -489,7 +489,7 @@ async function handleLogout() {
 // ========================================
 // INIT
 // ========================================
-supabase.auth.onAuthStateChange(async (event, session) => {
+sb.auth.onAuthStateChange(async (event, session) => {
     if (session?.user) {
         currentUser = session.user;
         $('auth-screen').style.display = 'none';
@@ -510,18 +510,18 @@ async function loadAll() {
     loading(true);
     try {
         // Carregar perfil
-        const { data: perfilData } = await supabase.from('perfis').select('*').single();
+        const { data: perfilData } = await sb.from('perfis').select('*').single();
         perfil = perfilData || {};
         
         // Carregar dados
         const [produtos, bebidas, sobremesas, extras, ingredientes, fichas, vendas] = await Promise.all([
-            supabase.from('produtos').select('*').order('nome'),
-            supabase.from('bebidas').select('*').order('nome'),
-            supabase.from('sobremesas').select('*').order('nome'),
-            supabase.from('extras').select('*').order('nome'),
-            supabase.from('ingredientes').select('*').order('nome'),
-            supabase.from('fichas').select('*'),
-            supabase.from('vendas').select('*').order('created_at', { ascending: false })
+            sb.from('produtos').select('*').order('nome'),
+            sb.from('bebidas').select('*').order('nome'),
+            sb.from('sobremesas').select('*').order('nome'),
+            sb.from('extras').select('*').order('nome'),
+            sb.from('ingredientes').select('*').order('nome'),
+            sb.from('fichas').select('*'),
+            sb.from('vendas').select('*').order('created_at', { ascending: false })
         ]);
         
         DB.produtos = produtos.data || [];
@@ -577,7 +577,7 @@ async function salvarTaxas() {
         imposto: parseFloat($('cfg-imposto').value) || 0
     };
     
-    const { error } = await supabase.from('perfis').update(taxas).eq('user_id', currentUser.id);
+    const { error } = await sb.from('perfis').update(taxas).eq('user_id', currentUser.id);
     if (error) {
         toast('Erro ao salvar: ' + error.message, true);
     } else {
@@ -589,7 +589,7 @@ async function salvarTaxas() {
 
 async function salvarPerfil() {
     const nome = $('cfg-restaurante').value;
-    const { error } = await supabase.from('perfis').update({ restaurante_nome: nome }).eq('user_id', currentUser.id);
+    const { error } = await sb.from('perfis').update({ restaurante_nome: nome }).eq('user_id', currentUser.id);
     if (error) {
         toast('Erro ao salvar: ' + error.message, true);
     } else {
@@ -726,13 +726,13 @@ $('form-prod').onsubmit = async e => {
     loading(true);
     let result;
     if (id) {
-        result = await supabase.from('produtos').update(data).eq('id', id).select().single();
+        result = await sb.from('produtos').update(data).eq('id', id).select().single();
         if (!result.error) {
             const idx = DB.produtos.findIndex(x => x.id === id);
             if (idx >= 0) DB.produtos[idx] = { ...DB.produtos[idx], ...result.data };
         }
     } else {
-        result = await supabase.from('produtos').insert(data).select().single();
+        result = await sb.from('produtos').insert(data).select().single();
         if (!result.error) DB.produtos.push(result.data);
     }
     loading(false);
@@ -752,8 +752,8 @@ $('form-beb').onsubmit = async e => {
     const data = { nome: $('beb-nome').value, custo: parseFloat($('beb-custo').value) || 0, preco_ifood: parseFloat($('beb-pif').value) || 0, preco_anota: parseFloat($('beb-pan').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await supabase.from('bebidas').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.bebidas.findIndex(x => x.id === id); if (idx >= 0) DB.bebidas[idx] = { ...DB.bebidas[idx], ...result.data }; } }
-    else { result = await supabase.from('bebidas').insert(data).select().single(); if (!result.error) DB.bebidas.push(result.data); }
+    if (id) { result = await sb.from('bebidas').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.bebidas.findIndex(x => x.id === id); if (idx >= 0) DB.bebidas[idx] = { ...DB.bebidas[idx], ...result.data }; } }
+    else { result = await sb.from('bebidas').insert(data).select().single(); if (!result.error) DB.bebidas.push(result.data); }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-beb'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -765,8 +765,8 @@ $('form-sob').onsubmit = async e => {
     const data = { nome: $('sob-nome').value, custo: parseFloat($('sob-custo').value) || 0, preco_ifood: parseFloat($('sob-pif').value) || 0, preco_anota: parseFloat($('sob-pan').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await supabase.from('sobremesas').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.sobremesas.findIndex(x => x.id === id); if (idx >= 0) DB.sobremesas[idx] = { ...DB.sobremesas[idx], ...result.data }; } }
-    else { result = await supabase.from('sobremesas').insert(data).select().single(); if (!result.error) DB.sobremesas.push(result.data); }
+    if (id) { result = await sb.from('sobremesas').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.sobremesas.findIndex(x => x.id === id); if (idx >= 0) DB.sobremesas[idx] = { ...DB.sobremesas[idx], ...result.data }; } }
+    else { result = await sb.from('sobremesas').insert(data).select().single(); if (!result.error) DB.sobremesas.push(result.data); }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-sob'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -778,8 +778,8 @@ $('form-ext').onsubmit = async e => {
     const data = { nome: $('ext-nome').value, custo: parseFloat($('ext-custo').value) || 0, preco: parseFloat($('ext-preco').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await supabase.from('extras').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.extras.findIndex(x => x.id === id); if (idx >= 0) DB.extras[idx] = { ...DB.extras[idx], ...result.data }; } }
-    else { result = await supabase.from('extras').insert(data).select().single(); if (!result.error) DB.extras.push(result.data); }
+    if (id) { result = await sb.from('extras').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.extras.findIndex(x => x.id === id); if (idx >= 0) DB.extras[idx] = { ...DB.extras[idx], ...result.data }; } }
+    else { result = await sb.from('extras').insert(data).select().single(); if (!result.error) DB.extras.push(result.data); }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-ext'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -791,8 +791,8 @@ $('form-ing').onsubmit = async e => {
     const data = { nome: $('ing-nome').value, un: $('ing-un').value, custo: parseFloat($('ing-custo').value) || 0, forn: $('ing-forn').value, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await supabase.from('ingredientes').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.ingredientes.findIndex(x => x.id === id); if (idx >= 0) DB.ingredientes[idx] = { ...DB.ingredientes[idx], ...result.data }; } }
-    else { result = await supabase.from('ingredientes').insert(data).select().single(); if (!result.error) DB.ingredientes.push(result.data); }
+    if (id) { result = await sb.from('ingredientes').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.ingredientes.findIndex(x => x.id === id); if (idx >= 0) DB.ingredientes[idx] = { ...DB.ingredientes[idx], ...result.data }; } }
+    else { result = await sb.from('ingredientes').insert(data).select().single(); if (!result.error) DB.ingredientes.push(result.data); }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-ing'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -819,7 +819,7 @@ function confirmar(tipo, id) {
 
 async function execDel(tabela, id) {
     loading(true);
-    const { error } = await supabase.from(tabela).delete().eq('id', id);
+    const { error } = await sb.from(tabela).delete().eq('id', id);
     if (error) {
         toast('Erro: ' + error.message, true);
     } else {
@@ -1024,7 +1024,7 @@ async function addIngFicha() {
     if (!prodId || !ingId || !qtd || qtd <= 0) { toast('Preencha os campos!', true); return; }
     
     loading(true);
-    const { data, error } = await supabase.from('fichas').insert({ produto_id: prodId, ingrediente_id: ingId, qtd, un, user_id: currentUser.id }).select().single();
+    const { data, error } = await sb.from('fichas').insert({ produto_id: prodId, ingrediente_id: ingId, qtd, un, user_id: currentUser.id }).select().single();
     
     if (error) {
         toast('Erro: ' + error.message, true);
@@ -1037,7 +1037,7 @@ async function addIngFicha() {
         const prod = DB.produtos.find(p => p.id === prodId);
         if (prod) {
             prod.custoFicha = custoTotal;
-            await supabase.from('produtos').update({ custo: custoTotal }).eq('id', prodId);
+            await sb.from('produtos').update({ custo: custoTotal }).eq('id', prodId);
         }
         
         renderFichaItens();
@@ -1054,7 +1054,7 @@ async function remFichaItem(id) {
     const prodId = ficha?.produto_id;
     
     loading(true);
-    const { error } = await supabase.from('fichas').delete().eq('id', id);
+    const { error } = await sb.from('fichas').delete().eq('id', id);
     
     if (error) {
         toast('Erro: ' + error.message, true);
@@ -1065,7 +1065,7 @@ async function remFichaItem(id) {
             const prod = DB.produtos.find(p => p.id === prodId);
             if (prod) {
                 prod.custoFicha = custoTotal;
-                await supabase.from('produtos').update({ custo: custoTotal }).eq('id', prodId);
+                await sb.from('produtos').update({ custo: custoTotal }).eq('id', prodId);
             }
         }
         renderFichaItens();
@@ -1466,7 +1466,7 @@ async function salvarImport() {
     };
     
     loading(true);
-    const { data: result, error } = await supabase.from('vendas').insert(data).select().single();
+    const { data: result, error } = await sb.from('vendas').insert(data).select().single();
     
     if (error) {
         toast('Erro: ' + error.message, true);
@@ -1486,7 +1486,7 @@ async function salvarImport() {
 // Init
 document.addEventListener('DOMContentLoaded', () => {
     // Check if already logged in
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    sb.auth.getSession().then(({ data: { session } }) => {
         if (session) {
             currentUser = session.user;
             $('auth-screen').style.display = 'none';
