@@ -378,6 +378,7 @@ const DB = { produtos: [], bebidas: [], sobremesas: [], extras: [], ingredientes
 let filterText = {};
 let chartCMV = null;
 let importData = null;
+let isLoading = false;
 
 // ========================================
 // UTILS
@@ -490,13 +491,18 @@ async function handleLogout() {
 // INIT
 // ========================================
 sb.auth.onAuthStateChange(async (event, session) => {
-    if (session?.user) {
+    console.log('Auth event:', event);
+    if (session?.user && !isLoading) {
         currentUser = session.user;
         $('auth-screen').style.display = 'none';
         $('app-screen').classList.add('visible');
         $('user-email').textContent = currentUser.email;
-        await loadAll();
-    } else {
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+            isLoading = true;
+            await loadAll();
+            isLoading = false;
+        }
+    } else if (!session) {
         currentUser = null;
         $('auth-screen').style.display = 'flex';
         $('app-screen').classList.remove('visible');
