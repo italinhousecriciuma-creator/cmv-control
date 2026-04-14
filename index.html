@@ -513,7 +513,33 @@ async function loadAll() {
     try {
         // Carregar perfil
         console.log('Carregando perfil...');
-        const { data: perfilData, error: perfilError } = await sb.from('perfis').select('*').maybeSingle();
+        const perfilPromise = sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 8000));
+        let perfilData = null, perfilError = null;
+        try {
+            const result = await Promise.race([perfilPromise, timeoutPromise]);
+            perfilData = result.data;
+            perfilError = result.error;
+        } catch(e) {
+            console.error('Timeout ao carregar perfil:', e);
+            // Criar perfil se não existe
+            const { data: novoPerfil } = await sb.from('perfis').insert({ 
+                user_id: currentUser.id, 
+                restaurante_nome: 'Meu Restaurante',
+                taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0
+            }).select().single();
+            perfilData = novoPerfil;
+        }
+        if (!perfilData && !perfilError) {
+            // Perfil não existe, criar
+            console.log('Perfil não encontrado, criando...');
+            const { data: novoPerfil } = await sb.from('perfis').insert({ 
+                user_id: currentUser.id, 
+                restaurante_nome: 'Meu Restaurante',
+                taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0
+            }).select().single();
+            perfilData = novoPerfil;
+        }
         console.log('Perfil:', perfilData, 'Erro:', perfilError);
         perfil = perfilData || {};
         
