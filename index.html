@@ -311,7 +311,7 @@ td{font-size:0.9rem;}
         <div class="page" id="p-fichas"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📋 Fichas Técnicas</div><div class="alert info">💡 O custo é calculado automaticamente pela ficha.</div><div class="field" style="max-width:400px;"><label>Produto</label><select id="ficha-prod" onchange="carregarFicha()"></select></div><div id="ficha-area" style="display:none;margin-top:1rem;"><div style="background:var(--bg3);border-radius:10px;padding:1rem;"><div style="font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;">🧅 Adicionar Ingrediente</div><div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;"><div class="field" style="flex:2;min-width:200px;margin:0;"><label>Ingrediente</label><select id="ficha-ing"></select></div><div class="field" style="width:100px;margin:0;"><label>Qtd</label><input type="number" id="ficha-qtd" placeholder="150" step="1" min="0"></div><div class="field" style="width:70px;margin:0;"><label>Un</label><select id="ficha-un"><option selected>g</option><option>ml</option><option>un</option></select></div><button class="btn btn-p" onclick="addIngFicha()">+ Add</button></div><div class="ing-list" id="ficha-list"></div></div><div class="res-box" style="margin-top:1rem;"><div class="res-item"><div class="lbl">Custo</div><div class="val" style="color:var(--green);" id="f-custo">R$ 0</div></div><div class="res-item"><div class="lbl">CMV iFood</div><div class="val" id="f-cmv-if">0%</div></div><div class="res-item"><div class="lbl">CMV AnotaAi</div><div class="val" id="f-cmv-an">0%</div></div></div></div></div></div>
         
         <!-- IMPORTAR -->
-        <div class="page" id="p-importar"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📥 Importar Vendas (Excel)</div><div class="alert info">💡 Exporte "Itens Vendidos" do iFood/AnotaAi em formato Excel (.xlsx)</div><div class="upload-box" id="upload-box" onclick="document.getElementById('file-input').click()"><div class="upload-icon">📄</div><div class="upload-text">Clique para selecionar arquivo</div><div id="upload-file" style="margin-top:0.5rem;color:var(--green);font-weight:500;"></div></div><input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;" onchange="handleFile(event)"><div id="import-preview" style="margin-top:1rem;"></div></div></div>
+        <div class="page" id="p-importar"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📥 Importar Vendas (Excel)</div><div class="alert info">💡 Exporte "Itens Vendidos" do iFood/AnotaAi em formato Excel (.xlsx)</div><div class="upload-box" id="upload-box" ><div class="upload-icon">📄</div><div class="upload-text">Clique para selecionar arquivo</div><div id="upload-file" style="margin-top:0.5rem;color:var(--green);font-weight:500;"></div></div><input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;" ><div id="import-preview" style="margin-top:1rem;"></div></div></div>
         
         <!-- ANÁLISE -->
         <div class="page" id="p-analise"><div class="taxas-panel" id="taxas-analise"></div><div class="card"><div class="card-head"><span class="card-title">📈 Análise</span><select id="sel-venda" style="padding:0.5rem 0.75rem;background:var(--bg3);border:1px solid var(--brd);border-radius:8px;color:var(--txt);min-width:200px;" onchange="mostrarAnalise()"></select></div></div><div id="analise-area"></div></div>
@@ -377,7 +377,6 @@ let perfil = null;
 const DB = { produtos: [], bebidas: [], sobremesas: [], extras: [], ingredientes: [], fichas: [], vendas: [] };
 let filterText = {};
 let chartCMV = null;
-let importData = null;
 
 
 // ========================================
@@ -1162,25 +1161,13 @@ function mostrarAnalise() {
 // ========================================
 // IMPORTAR (mantém a mesma lógica)
 // ========================================
-const uploadBox = $('upload-box');
-const fileInput = $('file-input');
-
-function handleFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    $('upload-file').textContent = file.name;
-    uploadBox.classList.add('has-file');
-    
-    const reader = new FileReader();
-    reader.onload = e => {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        processarExcel(json);
-    };
-    reader.readAsArrayBuffer(file);
-}
+const uploadBox=$('upload-box'),fileInput=$('file-input');
+uploadBox.onclick=()=>fileInput.click();
+uploadBox.ondragover=e=>e.preventDefault();
+uploadBox.ondrop=e=>{e.preventDefault();if(e.dataTransfer.files[0])processFile(e.dataTransfer.files[0]);};
+fileInput.onchange=e=>{if(e.target.files[0])processFile(e.target.files[0]);};
+let importData=null;
+function processFile(file){$('upload-file').textContent='📄 '+file.name;uploadBox.classList.add('has-file');loading(true);const reader=new FileReader();reader.onload=ev=>{try{const wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});const data=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});processarExcel(data);}catch(e){toast('Erro: '+e.message,true);}loading(false);};reader.readAsArrayBuffer(file);}
 
 
 function processarExcel(data){
