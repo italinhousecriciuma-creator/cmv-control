@@ -508,40 +508,59 @@ sb.auth.onAuthStateChange(async (event, session) => {
 // ========================================
 async function loadAll() {
     loading(true);
+    console.log('Iniciando loadAll...');
+    console.log('User:', currentUser?.id);
     try {
         // Carregar perfil
+        console.log('Carregando perfil...');
         const { data: perfilData, error: perfilError } = await sb.from('perfis').select('*').maybeSingle();
-        if (perfilError) console.error('Erro perfil:', perfilError);
+        console.log('Perfil:', perfilData, 'Erro:', perfilError);
         perfil = perfilData || {};
         
         // Carregar dados individualmente
-        const { data: produtos } = await sb.from('produtos').select('*').order('nome');
+        console.log('Carregando produtos...');
+        const { data: produtos, error: e1 } = await sb.from('produtos').select('*').order('nome');
+        console.log('Produtos:', produtos?.length, 'Erro:', e1);
         DB.produtos = produtos || [];
         
-        const { data: bebidas } = await sb.from('bebidas').select('*').order('nome');
+        console.log('Carregando bebidas...');
+        const { data: bebidas, error: e2 } = await sb.from('bebidas').select('*').order('nome');
+        console.log('Bebidas:', bebidas?.length, 'Erro:', e2);
         DB.bebidas = bebidas || [];
         
-        const { data: sobremesas } = await sb.from('sobremesas').select('*').order('nome');
+        console.log('Carregando sobremesas...');
+        const { data: sobremesas, error: e3 } = await sb.from('sobremesas').select('*').order('nome');
+        console.log('Sobremesas:', sobremesas?.length, 'Erro:', e3);
         DB.sobremesas = sobremesas || [];
         
-        const { data: extras } = await sb.from('extras').select('*').order('nome');
+        console.log('Carregando extras...');
+        const { data: extras, error: e4 } = await sb.from('extras').select('*').order('nome');
+        console.log('Extras:', extras?.length, 'Erro:', e4);
         DB.extras = extras || [];
         
-        const { data: ingredientes } = await sb.from('ingredientes').select('*').order('nome');
+        console.log('Carregando ingredientes...');
+        const { data: ingredientes, error: e5 } = await sb.from('ingredientes').select('*').order('nome');
+        console.log('Ingredientes:', ingredientes?.length, 'Erro:', e5);
         DB.ingredientes = ingredientes || [];
         
-        const { data: fichas } = await sb.from('fichas').select('*');
+        console.log('Carregando fichas...');
+        const { data: fichas, error: e6 } = await sb.from('fichas').select('*');
+        console.log('Fichas:', fichas?.length, 'Erro:', e6);
         DB.fichas = fichas || [];
         
-        const { data: vendas } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
+        console.log('Carregando vendas...');
+        const { data: vendas, error: e7 } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
+        console.log('Vendas:', vendas?.length, 'Erro:', e7);
         DB.vendas = vendas || [];
         
         // Calcular custo das fichas
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
         
+        console.log('Carregando taxas e renderizando...');
         // Carregar taxas do perfil
         carregarTaxas();
         renderAll();
+        console.log('loadAll concluído!');
     } catch (e) {
         console.error('Erro geral:', e);
         toast('Erro ao carregar: ' + e.message, true);
@@ -553,24 +572,20 @@ async function loadAll() {
 // TAXAS
 // ========================================
 function carregarTaxas() {
-    if (perfil) {
-        $('cfg-taxa-if').value = perfil.taxa_ifood || 10;
-        $('cfg-taxa-an').value = perfil.taxa_anota || 0;
-        $('cfg-royalties').value = perfil.royalties || 5;
-        $('cfg-imposto').value = perfil.imposto || 0;
-        $('cfg-restaurante').value = perfil.restaurante_nome || '';
-        
-        // Plano info
-        const planoLabels = { free: 'Gratuito', basico: 'Básico', pro: 'Profissional' };
-        $('plano-info').innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                    <div style="font-weight:600;">Plano ${planoLabels[perfil.plano] || 'Gratuito'}</div>
-                    <div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ${new Date(perfil.created_at).toLocaleDateString('pt-BR')}</div>
-                </div>
-                <span class="badge ${perfil.plano === 'pro' ? 'green' : perfil.plano === 'basico' ? 'blue' : 'gray'}">${(perfil.plano || 'free').toUpperCase()}</span>
-            </div>
-        `;
+    try {
+        if (perfil && typeof perfil === 'object') {
+            $('cfg-taxa-if').value = perfil.taxa_ifood ?? 10;
+            $('cfg-taxa-an').value = perfil.taxa_anota ?? 0;
+            $('cfg-royalties').value = perfil.royalties ?? 5;
+            $('cfg-imposto').value = perfil.imposto ?? 0;
+            $('cfg-restaurante').value = perfil.restaurante_nome || '';
+            
+            const planoLabels = { free: 'Gratuito', basico: 'Básico', pro: 'Profissional' };
+            const dataStr = perfil.created_at ? new Date(perfil.created_at).toLocaleDateString('pt-BR') : '-';
+            $('plano-info').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:600;">Plano ' + (planoLabels[perfil.plano] || 'Gratuito') + '</div><div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ' + dataStr + '</div></div><span class="badge ' + (perfil.plano === 'pro' ? 'green' : perfil.plano === 'basico' ? 'blue' : 'gray') + '">' + ((perfil.plano || 'free').toUpperCase()) + '</span></div>';
+        }
+    } catch(e) {
+        console.error('Erro carregarTaxas:', e);
     }
 }
 
@@ -935,48 +950,59 @@ function atualizarDash() {
 }
 
 function renderChartCMV() {
-    const cats = ['macarrao', 'risoto', 'nhoque', 'combo'];
-    const data = cats.map(cat => {
-        const prods = DB.produtos.filter(p => p.cat === cat && (p.custoFicha || calcCustoProduto(p.id)) > 0);
-        if (prods.length === 0) return 0;
-        return prods.reduce((s, p) => s + calcCMV(p.custoFicha || calcCustoProduto(p.id), p.preco_ifood, true), 0) / prods.length;
-    });
-    
-    const ctx = $('chart-cmv-cat').getContext('2d');
-    if (chartCMV) chartCMV.destroy();
-    chartCMV = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: cats.map(c => catLabels[c]),
-            datasets: [{
-                data: data,
-                backgroundColor: data.map(v => v <= 25 ? 'rgba(34,197,94,0.8)' : v <= 35 ? 'rgba(234,179,8,0.8)' : 'rgba(239,68,68,0.8)'),
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, max: 60, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#94a3b8', callback: v => v + '%' } },
-                x: { grid: { display: false }, ticks: { color: '#f8fafc' } }
+    try {
+        const canvas = $('chart-cmv-cat');
+        if (!canvas) return;
+        
+        const cats = ['macarrao', 'risoto', 'nhoque', 'combo'];
+        const data = cats.map(cat => {
+            const prods = DB.produtos.filter(p => p.cat === cat && (p.custoFicha || calcCustoProduto(p.id)) > 0);
+            if (prods.length === 0) return 0;
+            return prods.reduce((s, p) => s + calcCMV(p.custoFicha || calcCustoProduto(p.id), p.preco_ifood, true), 0) / prods.length;
+        });
+        
+        const ctx = canvas.getContext('2d');
+        if (chartCMV) chartCMV.destroy();
+        chartCMV = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: cats.map(c => catLabels[c]),
+                datasets: [{
+                    data: data,
+                    backgroundColor: data.map(v => v <= 25 ? 'rgba(34,197,94,0.8)' : v <= 35 ? 'rgba(234,179,8,0.8)' : 'rgba(239,68,68,0.8)'),
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, max: 60, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#94a3b8', callback: v => v + '%' } },
+                    x: { grid: { display: false }, ticks: { color: '#f8fafc' } }
+                }
             }
-        }
-    });
+        });
+    } catch(e) {
+        console.error('Erro renderChartCMV:', e);
+    }
 }
 
 function renderAll() {
-    renderProd();
-    renderBeb();
-    renderSob();
-    renderExt();
-    renderIng();
-    renderVendas();
-    renderFichaSelects();
-    renderRanking();
-    atualizarDash();
-    renderChartCMV();
+    try {
+        renderProd();
+        renderBeb();
+        renderSob();
+        renderExt();
+        renderIng();
+        renderVendas();
+        renderFichaSelects();
+        renderRanking();
+        atualizarDash();
+        renderChartCMV();
+    } catch(e) {
+        console.error('Erro renderAll:', e);
+    }
 }
 
 // ========================================
