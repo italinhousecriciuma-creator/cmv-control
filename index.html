@@ -513,15 +513,18 @@ sb.auth.onAuthStateChange(async (event, session) => {
 // LOAD DATA
 // ========================================
 async function loadAll() {
+    console.log('loadAll: início');
     loading(true);
     try {
-        // Carregar perfil
-        const { data: perfilData } = await sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle();
+        console.log('loadAll: carregando perfil...');
+        const { data: perfilData, error: perfilError } = await sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle();
+        console.log('loadAll: perfil', perfilData, perfilError);
         perfil = perfilData || { taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0 };
         
-        // Carregar dados
+        console.log('loadAll: carregando tabelas...');
         const { data: produtos } = await sb.from('produtos').select('*').order('nome');
         DB.produtos = produtos || [];
+        console.log('loadAll: produtos', DB.produtos.length);
         
         const { data: bebidas } = await sb.from('bebidas').select('*').order('nome');
         DB.bebidas = bebidas || [];
@@ -541,17 +544,19 @@ async function loadAll() {
         const { data: vendas } = await sb.from('vendas').select('*').order('created_at', { ascending: false });
         DB.vendas = vendas || [];
         
-        // Calcular custo das fichas
+        console.log('loadAll: calculando custos...');
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
         
-        // Carregar taxas e renderizar
+        console.log('loadAll: renderizando...');
         carregarTaxas();
         renderAll();
+        console.log('loadAll: concluído!');
     } catch (e) {
-        console.error('Erro:', e);
+        console.error('loadAll ERRO:', e);
         toast('Erro ao carregar', true);
     }
     loading(false);
+    console.log('loadAll: loading removido');
 }
 
 // ========================================
@@ -1500,8 +1505,26 @@ async function salvarImport() {
     loading(false);
 }
 
-// Init
-// Init já é feito pelo onAuthStateChange
+// Init - verificar sessão existente
+console.log('Verificando sessão...');
+sb.auth.getSession().then(({ data: { session } }) => {
+    console.log('Sessão:', session ? 'existe' : 'não existe', 'hasLoaded:', hasLoaded);
+    if (session?.user && !hasLoaded) {
+        console.log('Iniciando app para:', session.user.email);
+        currentUser = session.user;
+        $('auth-screen').style.display = 'none';
+        $('app-screen').classList.add('visible');
+        $('user-email').textContent = currentUser.email;
+        hasLoaded = true;
+        loadAll().then(() => console.log('loadAll finalizado!')).catch(e => console.error('loadAll erro:', e));
+    } else if (!session) {
+        console.log('Sem sessão, mostrando login');
+        loading(false);
+    }
+}).catch(e => {
+    console.error('Erro getSession:', e);
+    loading(false);
+});
 </script>
 </body>
 </html>
