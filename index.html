@@ -1220,18 +1220,22 @@ const salvarProdutoAnterior=()=>{if(!produtoAtual)return;if(secaoAtual==='macarr
 
 const processarItemDireto=(subNome,qtd,origem)=>{const subNomeL=subNome.toLowerCase();if(subNomeL.includes('nhoque')&&!subNomeL.includes('recheado')&&!subNomeL.includes('tradicional'))return;let tam='G';if(subNomeL.includes('box kids')||subNomeL.includes('box p')||subNomeL.includes('450g')||isBoiadeirinha)tam='P';else if(subNomeL.includes('box g')||subNomeL.includes('800g')||subNomeL.includes('750g'))tam='G';else return;const sabores=['bolonhesa','camarão','queijos','costela','ragu','cheddar','bacon','frango','pomodoro','broccoli','funghi','parisiense'];let temSabor=false;for(const s of sabores)if(subNomeL.includes(s)){temSabor=true;break;}if(!temSabor)return;const prod=findProd(subNome,tam,'macarrao');if(prod)addProdVenda(prod,qtd,0,origem,tam);};
 
+const sabores = ['bolonhesa','carbonara','camarão','cheddar','queijos','costela','ragu','frango','pomodoro','broccoli','funghi','parisiense','alfredo','primavera','vegetariano','siciliano','napolitano'];
+
 for(let i=5;i<data.length;i++){
 const row=data[i];if(!row||!row[0])continue;
 const nome=String(row[0]).trim(),qtd=parseInt(row[1])||0,valor=parseFloat(row[2])||0;
 if(!nome||nome==='nan')continue;
 const nomeL=nome.toLowerCase();
 
-// Linhas em branco ou sem conteúdo útil - ignorar
+// Linhas em branco - ignorar
 if(!nome.trim())continue;
 
-// LINHA SEM HÍFEN = CATEGORIA/SEÇÃO (não processar como item)
-const isSubItem=nome.startsWith('-')||nome.startsWith(' -');
-if(!isSubItem){
+// CRITÉRIO: Se tem quantidade (qtd > 0) = É ITEM, senão = É CATEGORIA
+const isItem = qtd > 0;
+
+if(!isItem){
+// LINHA SEM QUANTIDADE = CATEGORIA/SEÇÃO
 salvarProdutoAnterior();
 if(valor>0)vendas.totalFat+=valor;
 isBoiadeirinha=nomeL.includes('boiadeirinha');
@@ -1246,10 +1250,9 @@ else if(nomeL.includes('melhor macarrão')&&!nomeL.includes('box g'))secaoAtual=
 else if(nomeL.includes('risoto')&&!nomeL.includes('combo'))secaoAtual='risoto';
 else if(nomeL.includes('nhoque')&&!nomeL.includes('combo'))secaoAtual='nhoque';
 else if(nomeL.includes('combo')||nomeL.includes('diversos')||nomeL.includes('oferta')||nomeL.includes('compre'))secaoAtual='combos';
-// NÃO mudar seção para 'outros' - manter a seção atual
 continue;}
 
-// LINHA COM HÍFEN = ITEM REAL (subcategoria) - processar
+// LINHA COM QUANTIDADE = ITEM REAL - processar
 const subNome=nome.replace(/^[-\s]+/,'').trim(),subNomeL=subNome.toLowerCase();
 
 // 1. EXTRAS AVULSOS - em QUALQUER seção (Extra X, Pimenta do Reino, Talheres, etc.)
@@ -1298,9 +1301,22 @@ continue;}
 
 // 7. MACARRÃO
 if(secaoAtual==='macarrao'){
-if(subNomeL.includes('macarrão')&&valor>0&&qtd>0){salvarProdutoAnterior();produtoAtual={nome:subNome,qtd,valor};}
-else if((subNomeL.includes('box p')||subNomeL.includes('450g'))&&!subNomeL.includes('nhoque'))qtdBoxP+=qtd;
-else if((subNomeL.includes('box g')||subNomeL.includes('800g')||subNomeL.includes('750g'))&&!subNomeL.includes('nhoque'))qtdBoxG+=qtd;
+// Se tem sabor + tamanho na mesma linha, processar diretamente
+const temSabor = sabores.some(s => subNomeL.includes(s));
+const isBoxP = subNomeL.includes('box p') || (subNomeL.includes('450g') && !subNomeL.includes('800g'));
+const isBoxG = subNomeL.includes('box g') || subNomeL.includes('800g') || subNomeL.includes('750g');
+
+if(temSabor && (isBoxP || isBoxG) && qtd > 0){
+    const tam = isBoxP ? 'P' : 'G';
+    const prod = findProd(subNome, tam, 'macarrao');
+    if(prod) addProdVenda(prod, qtd, valor, 'Macarrão', tam);
+    else vendas.naoEncontrados.push({nome:subNome, tam:tam, qtd:qtd, cat:'macarrao'});
+}
+// Se é categoria mãe "Macarrão X", guardar para sub-itens sem sabor
+else if(subNomeL.includes('macarrão')&&valor>0&&qtd>0){salvarProdutoAnterior();produtoAtual={nome:subNome,qtd,valor};}
+// Sub-itens sem sabor (só "Box P" ou "Box G")
+else if(isBoxP&&!subNomeL.includes('nhoque'))qtdBoxP+=qtd;
+else if(isBoxG&&!subNomeL.includes('nhoque'))qtdBoxG+=qtd;
 }else if(secaoAtual==='macarrao_g'){
 if(subNomeL.includes('macarrão')&&valor>0&&qtd>0){salvarProdutoAnterior();produtoAtual={nome:subNome,qtd,valor};}
 }else if(secaoAtual==='risoto'){
