@@ -1383,6 +1383,22 @@ function processarExcel(data) {
                (nL.includes('recheado') && nL.includes('nhoque'));
     };
     
+    // Agrupadores de bebida (NÃO contar como bebida, são totais)
+    const isAgrupadorBebida = n => {
+        const nL = n.toLowerCase().trim();
+        return nL === 'refrigerante lata 350ml' ||
+               nL === 'refrigerante 600ml' ||
+               nL === 'refrigerante 200ml' ||
+               nL === 'refrigerante 2 litros' ||
+               nL === 'refrigerante sprite lemon fresh' ||
+               nL === 'água' ||
+               nL === 'sucos' ||
+               nL === 'energético' ||
+               nL === 'vinho' ||
+               nL === 'vai uma bebida aí?!' ||
+               nL === 'vai uma bebida';
+    };
+    
     // Itens a IGNORAR completamente
     const isIgnorar = n => {
         const nL = n.toLowerCase();
@@ -1398,12 +1414,7 @@ function processarExcel(data) {
                nL.includes('copo um brinde') ||
                nL.includes('chaveiro') ||
                nL.includes('molho de pimenta') ||
-               nL === 'refrigerante lata 350ml' || 
-               nL === 'refrigerante 600ml' ||
-               nL === 'água' || 
-               nL === 'sucos' || 
-               nL === 'energético' || 
-               nL === 'vinho';
+               isAgrupadorBebida(n);
     };
     
     // Detectar tamanho
@@ -1571,8 +1582,8 @@ function processarExcel(data) {
             continue;
         }
         
-        // 4. BEBIDAS (em qualquer seção)
-        if (isBebidaItem(nomeLimpo)) {
+        // 4. BEBIDAS (em qualquer seção) - ignorar agrupadores
+        if (isBebidaItem(nomeLimpo) && !isAgrupadorBebida(nomeLimpo)) {
             const beb = findBebida(nomeLimpo);
             if (beb) {
                 const existe = vendas.bebidas.find(b => b.id === beb.id);
@@ -1586,8 +1597,8 @@ function processarExcel(data) {
             continue;
         }
         
-        // 5. BEBIDAS (seção bebidas)
-        if (secaoAtual === 'bebidas') {
+        // 5. BEBIDAS (seção bebidas) - ignorar agrupadores
+        if (secaoAtual === 'bebidas' && !isAgrupadorBebida(nomeLimpo)) {
             const beb = findBebida(nomeLimpo);
             if (beb) {
                 const existe = vendas.bebidas.find(b => b.id === beb.id);
