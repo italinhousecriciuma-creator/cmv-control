@@ -539,7 +539,7 @@ async function loadAll() {
         console.log('loadAll: carregando perfil...');
         let perfilData = null;
         try {
-            const result = await fetchWithTimeout(sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(), 5000);
+            const result = await fetchWithTimeout(sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(), 15000);
             perfilData = result.data;
             console.log('loadAll: perfil carregado', perfilData);
         } catch(e) {
@@ -550,38 +550,38 @@ async function loadAll() {
         
         console.log('loadAll: carregando tabelas...');
         try {
-            const r1 = await fetchWithTimeout(sb.from('produtos').select('*').order('nome'), 5000);
+            const r1 = await fetchWithTimeout(sb.from('produtos').select('*').order('nome'), 15000);
             DB.produtos = r1.data || [];
-        } catch(e) { console.log('produtos timeout'); DB.produtos = []; }
+        } catch(e) { console.error('produtos erro:', e.message); DB.produtos = []; }
         console.log('loadAll: produtos', DB.produtos.length);
         
         try {
-            const r2 = await fetchWithTimeout(sb.from('bebidas').select('*').order('nome'), 5000);
+            const r2 = await fetchWithTimeout(sb.from('bebidas').select('*').order('nome'), 15000);
             DB.bebidas = r2.data || [];
         } catch(e) { DB.bebidas = []; }
         
         try {
-            const r3 = await fetchWithTimeout(sb.from('sobremesas').select('*').order('nome'), 5000);
+            const r3 = await fetchWithTimeout(sb.from('sobremesas').select('*').order('nome'), 15000);
             DB.sobremesas = r3.data || [];
         } catch(e) { DB.sobremesas = []; }
         
         try {
-            const r4 = await fetchWithTimeout(sb.from('extras').select('*').order('nome'), 5000);
+            const r4 = await fetchWithTimeout(sb.from('extras').select('*').order('nome'), 15000);
             DB.extras = r4.data || [];
         } catch(e) { DB.extras = []; }
         
         try {
-            const r5 = await fetchWithTimeout(sb.from('ingredientes').select('*').order('nome'), 5000);
+            const r5 = await fetchWithTimeout(sb.from('ingredientes').select('*').order('nome'), 15000);
             DB.ingredientes = r5.data || [];
         } catch(e) { DB.ingredientes = []; }
         
         try {
-            const r6 = await fetchWithTimeout(sb.from('fichas').select('*'), 5000);
+            const r6 = await fetchWithTimeout(sb.from('fichas').select('*'), 15000);
             DB.fichas = r6.data || [];
         } catch(e) { DB.fichas = []; }
         
         try {
-            const r7 = await fetchWithTimeout(sb.from('vendas').select('*').order('created_at', { ascending: false }), 5000);
+            const r7 = await fetchWithTimeout(sb.from('vendas').select('*').order('created_at', { ascending: false }), 15000);
             DB.vendas = r7.data || [];
         } catch(e) { DB.vendas = []; }
         
@@ -1279,6 +1279,7 @@ function processFile(file){$('upload-file').textContent='📄 '+file.name;upload
 
 
 function processarExcel(data) {
+    // Extrair período
     let periodo = '';
     if (data[1] && data[1][0]) {
         const match = String(data[1][0]).match(/(\d{2})\/(\d{2})\/(\d{4})/);
@@ -1291,44 +1292,44 @@ function processarExcel(data) {
         detalhes: { macP: [], macG: [], risoto: [], nhoque: [] }
     };
     
-    // Normalizar nome
+    // Normalizar nome para comparação
     const norm = n => n.toLowerCase()
-        .replace(/\(aprox\.?\s*\d+g?\)/gi, '')
+        .replace(/\(aprox\.?\s*[\d,]+\s*g?\)/gi, '')
         .replace(/\(vale muito a pena!?\)/gi, '')
         .replace(/box\s*(p|g|kids)/gi, '')
-        .replace(/\t/g, ' ')
-        .replace(/-/g, ' ')
+        .replace(/[\t\-]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
     
-    // Sabores de produtos
+    // Lista de sabores para identificar produtos
     const sabores = [
-        'cheddar com carne e bacon', 'cheddar com bacon', 'cheddar bacon',
-        'camarão rosé', 'camarão', 'quatro queijos', 'ragu de costela',
-        'frango com requeijão', 'frango cremoso', 'bolonhesa', 'carbonara',
-        'pomodoro', 'broccoli', 'funghi', 'parisiense', 'primavera'
+        'cheddar com carne e bacon', 'cheddar carne bacon',
+        'cheddar com bacon', 'cheddar bacon',
+        'camarão rosé', 'camarão',
+        'quatro queijos', 'ragu de costela', 'ragu costela',
+        'frango com requeijão', 'frango requeijão', 'frango cremoso',
+        'bolonhesa', 'carbonara', 'pomodoro', 'broccoli', 'funghi', 'parisiense'
     ];
     
+    // Extrair sabor do nome
     const extrairSabor = nome => {
         const n = norm(nome);
         for (const s of sabores) if (n.includes(s)) return s;
-        return n;
+        return null;
     };
     
-    // Encontrar produto no cadastro
+    // Funções de busca no cadastro
     const findProd = (nome, tam, cat) => {
         const sabor = extrairSabor(nome);
+        if (!sabor) return null;
         return DB.produtos.find(p => {
             if (tam && p.tam !== tam) return false;
             if (cat && p.cat !== cat) return false;
             const pSabor = extrairSabor(p.nome);
-            if (sabor === pSabor) return true;
-            if (sabor.includes(pSabor) || pSabor.includes(sabor)) return true;
-            return false;
+            return sabor === pSabor || sabor.includes(pSabor) || pSabor?.includes(sabor);
         });
     };
     
-    // Encontrar bebida
     const findBebida = nome => {
         const n = norm(nome);
         return DB.bebidas.find(b => {
@@ -1337,7 +1338,6 @@ function processarExcel(data) {
         });
     };
     
-    // Encontrar sobremesa
     const findSobremesa = nome => {
         const n = norm(nome);
         return DB.sobremesas.find(s => {
@@ -1346,7 +1346,6 @@ function processarExcel(data) {
         });
     };
     
-    // Encontrar extra
     const findExtra = nome => {
         const n = norm(nome);
         return DB.extras.find(e => {
@@ -1361,7 +1360,8 @@ function processarExcel(data) {
         return nL.includes('coca') || nL.includes('fanta') || nL.includes('sprite') ||
                nL.includes('guaraná') || nL.includes('água') || nL.includes('suco') ||
                nL.includes('monster') || nL.includes('energético') || nL.includes('vinho') ||
-               nL.includes('cerveja') || nL.includes('h2o');
+               nL.includes('cerveja') || nL.includes('h2o') || nL.includes('del valle') ||
+               nL.includes('néctar') || nL.includes('refrigerante');
     };
     
     const isSobremesaItem = n => {
@@ -1372,50 +1372,84 @@ function processarExcel(data) {
     
     const isExtraItem = n => {
         const nL = n.toLowerCase();
-        return nL.startsWith('extra ') || nL.includes('pimenta do reino') ||
-               nL.includes('acompanhamento + sobremesa') || nL.includes('acompanhamento +sobremesa') ||
-               nL.includes('muçarela') || nL.includes('mussarela') || nL.includes('recheado');
+        return nL.startsWith('extra ') || 
+               nL.includes('pimenta do reino') ||
+               nL.includes('polenta') ||
+               nL.includes('crostini') ||
+               nL.includes('acompanhamento + sobremesa') ||
+               nL.includes('acompanhamento +sobremesa') ||
+               (nL.includes('muçarela') && !nL.includes('nhoque')) ||
+               (nL.includes('mussarela') && !nL.includes('nhoque')) ||
+               (nL.includes('recheado') && nL.includes('nhoque'));
     };
     
-    // Itens a IGNORAR
+    // Itens a IGNORAR completamente
     const isIgnorar = n => {
         const nL = n.toLowerCase();
         return nL.includes('nhoque tradicional') ||
-               nL.includes('não preciso de talher') || nL.includes('preciso de talher') ||
-               nL.includes('talharim') || nL.includes('penne') || nL.includes('caracolino') ||
-               nL.includes('espaguete') || nL.includes('fettuccine') ||
-               nL === 'refrigerante lata 350ml' || nL === 'refrigerante 600ml' ||
-               nL === 'água' || nL === 'sucos' || nL === 'energético' || nL === 'vinho';
+               nL.includes('não preciso de talher') || 
+               nL.includes('preciso de talher') ||
+               nL.includes('talharim') || 
+               nL.includes('penne') && !nL.includes('integral') ||
+               nL.includes('caracolino') ||
+               nL.includes('espaguete') ||
+               nL.includes('fettuccine') ||
+               nL.includes('opção vegetariana') ||
+               nL.includes('copo um brinde') ||
+               nL.includes('chaveiro') ||
+               nL.includes('molho de pimenta') ||
+               nL === 'refrigerante lata 350ml' || 
+               nL === 'refrigerante 600ml' ||
+               nL === 'água' || 
+               nL === 'sucos' || 
+               nL === 'energético' || 
+               nL === 'vinho';
     };
     
     // Detectar tamanho
     const getTamanho = n => {
         const nL = n.toLowerCase();
-        if (nL.includes('box p') || nL.includes('450g') || nL.includes('box kids')) return 'P';
+        if (nL.includes('box kids') || nL.includes('box p') || nL.includes('450g')) return 'P';
         if (nL.includes('box g') || nL.includes('800g') || nL.includes('750g') || nL.includes('650g')) return 'G';
-        return 'G'; // Padrão
-    };
-    
-    // Detectar se tem sabor
-    const temSabor = n => {
-        const nL = n.toLowerCase();
-        return sabores.some(s => nL.includes(s));
+        return null;
     };
     
     // Adicionar produto à venda
     const addProdVenda = (prod, qtd, valor, origem, tam, cat) => {
         if (!prod || qtd <= 0) return;
         const custo = prod.custoFicha || calcCustoProduto(prod.id) || prod.custo || 0;
-        vendas.produtos.push({ ...prod, custo, qtdVenda: qtd, valorVenda: valor, origem, tamImport: tam });
-        if (cat === 'risoto') vendas.detalhes.risoto.push({ nome: prod.nome, qtd });
-        else if (cat === 'nhoque') vendas.detalhes.nhoque.push({ nome: prod.nome, qtd });
-        else if (tam === 'P') vendas.detalhes.macP.push({ nome: prod.nome, qtd });
-        else vendas.detalhes.macG.push({ nome: prod.nome, qtd });
+        
+        // Verificar se já existe para evitar duplicata
+        const existe = vendas.produtos.find(p => 
+            p.id === prod.id && p.tamImport === tam && p.origem === origem
+        );
+        if (existe) {
+            existe.qtdVenda += qtd;
+            existe.valorVenda += valor;
+        } else {
+            vendas.produtos.push({ ...prod, custo, qtdVenda: qtd, valorVenda: valor, origem, tamImport: tam });
+        }
+        
+        // Atualizar detalhes
+        if (cat === 'risoto') {
+            const det = vendas.detalhes.risoto.find(d => d.nome === prod.nome);
+            if (det) det.qtd += qtd; else vendas.detalhes.risoto.push({ nome: prod.nome, qtd });
+        } else if (cat === 'nhoque') {
+            const det = vendas.detalhes.nhoque.find(d => d.nome === prod.nome);
+            if (det) det.qtd += qtd; else vendas.detalhes.nhoque.push({ nome: prod.nome, qtd });
+        } else if (tam === 'P') {
+            const det = vendas.detalhes.macP.find(d => d.nome === prod.nome);
+            if (det) det.qtd += qtd; else vendas.detalhes.macP.push({ nome: prod.nome, qtd });
+        } else {
+            const det = vendas.detalhes.macG.find(d => d.nome === prod.nome);
+            if (det) det.qtd += qtd; else vendas.detalhes.macG.push({ nome: prod.nome, qtd });
+        }
     };
     
     let secaoAtual = null;
+    let isBoiadeirinha = false;
     
-    // Processar linhas
+    // Processar todas as linhas
     for (let i = 5; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[0]) continue;
@@ -1429,39 +1463,74 @@ function processarExcel(data) {
         const nomeL = nome.toLowerCase();
         const isSubItem = nome.startsWith('-') || nome.startsWith(' -');
         const nomeLimpo = nome.replace(/^[-\s]+/, '').trim();
+        const nomeLimpoL = nomeLimpo.toLowerCase();
         
-        // === LINHA SEM HÍFEN (Categoria Mãe) ===
+        // === LINHA SEM HÍFEN (Categoria) ===
         if (!isSubItem) {
-            // Acumular faturamento
+            // Acumular faturamento da categoria
             if (valor > 0) vendas.totalFat += valor;
             
             // Detectar seção
-            if (nomeL.includes('bebida') || nomeL.includes('vai uma bebida')) {
+            isBoiadeirinha = nomeL.includes('boiadeirinha');
+            
+            if (nomeL.includes('bebida') || nomeL.includes('refrigerante') || 
+                nomeL.includes('água') || nomeL.includes('suco') || 
+                nomeL.includes('energético') || nomeL.includes('vinho')) {
                 secaoAtual = 'bebidas';
-            } else if (nomeL.includes('docinho') || nomeL.includes('vai um docinho')) {
+            } else if (nomeL.includes('docinho') || nomeL.includes('tiramisu') || 
+                       nomeL.includes('cannoli') || nomeL.includes('brownie') || 
+                       nomeL.includes('palha italiana')) {
                 secaoAtual = 'sobremesas';
-            } else if (nomeL.includes('entradas e acompanhamentos') || nomeL.includes('molhinho')) {
+                // Sobremesa como categoria = produto direto
+                if (qtd > 0 && isSobremesaItem(nome)) {
+                    const sob = findSobremesa(nome);
+                    if (sob) vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+                    else vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+                }
+            } else if (nomeL.includes('entradas') || nomeL.includes('acompanhamento') || 
+                       nomeL.includes('molhinho') || nomeL.includes('crostini')) {
                 secaoAtual = 'extras';
-            } else if (nomeL.includes('macarrão')) {
-                secaoAtual = 'macarrao';
+                // Crostini como categoria = produto direto
+                if (qtd > 0 && nomeL.includes('crostini')) {
+                    const ext = findExtra(nome);
+                    if (ext) vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+                    else vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+                }
             } else if (nomeL.includes('risoto') && !nomeL.includes('combo')) {
                 secaoAtual = 'risoto';
-                // RISOTO: A categoria mãe É o produto!
-                if (qtd > 0 && temSabor(nome)) {
+                // RISOTO: A categoria É o produto!
+                if (qtd > 0 && extrairSabor(nome)) {
                     const prod = findProd(nome, 'G', 'risoto');
                     if (prod) addProdVenda(prod, qtd, valor, 'Risoto', 'G', 'risoto');
                     else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'risoto' });
                 }
             } else if (nomeL.includes('nhoque') && !nomeL.includes('combo')) {
                 secaoAtual = 'nhoque';
-                // NHOQUE: A categoria mãe É o produto!
-                if (qtd > 0 && temSabor(nome)) {
+                // NHOQUE: A categoria É o produto!
+                if (qtd > 0 && extrairSabor(nome)) {
                     const prod = findProd(nome, 'G', 'nhoque');
                     if (prod) addProdVenda(prod, qtd, valor, 'Nhoque', 'G', 'nhoque');
                     else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'nhoque' });
                 }
-            } else if (nomeL.includes('combo') || nomeL.includes('diversos') || nomeL.includes('oferta')) {
+            } else if (nomeL.includes('macarrão') && !nomeL.includes('combo') && !nomeL.includes('salada')) {
+                // MACARRÃO Box G como categoria (não Box P)
+                if (nomeL.includes('800g') || nomeL.includes('750g')) {
+                    secaoAtual = 'macarrao_g';
+                    // Categoria com gramatura É o produto Box G
+                    if (qtd > 0 && extrairSabor(nome)) {
+                        const prod = findProd(nome, 'G', 'macarrao');
+                        if (prod) addProdVenda(prod, qtd, valor, 'Macarrão G', 'G', 'macarrao');
+                        else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'macarrao' });
+                    }
+                } else {
+                    secaoAtual = 'macarrao';
+                    // NÃO processar categoria de macarrão sem gramatura como produto
+                }
+            } else if (nomeL.includes('combo') || nomeL.includes('diversos') || 
+                       nomeL.includes('especial de almoço') || nomeL.includes('compre')) {
                 secaoAtual = 'combos';
+            } else if (nomeL.includes('salada')) {
+                secaoAtual = 'salada';
             }
             continue;
         }
@@ -1472,13 +1541,17 @@ function processarExcel(data) {
         // 1. IGNORAR itens específicos
         if (isIgnorar(nomeLimpo)) continue;
         
-        // 2. EXTRAS (Extra X, Muçarela, etc.)
+        // 2. EXTRAS (Extra X, Muçarela de Nhoque, Polenta, Crostini, etc.)
         if (isExtraItem(nomeLimpo)) {
             const ext = findExtra(nomeLimpo);
             if (ext) {
-                vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+                const existe = vendas.extras.find(e => e.id === ext.id);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             } else {
-                vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+                const existe = vendas.extras.find(e => e.nome === nomeLimpo);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             }
             continue;
         }
@@ -1487,85 +1560,106 @@ function processarExcel(data) {
         if (isSobremesaItem(nomeLimpo)) {
             const sob = findSobremesa(nomeLimpo);
             if (sob) {
-                vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+                const existe = vendas.sobremesas.find(s => s.id === sob.id);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             } else {
-                vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+                const existe = vendas.sobremesas.find(s => s.nome === nomeLimpo);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             }
             continue;
         }
         
-        // 4. BEBIDAS
-        if (isBebidaItem(nomeLimpo) || secaoAtual === 'bebidas') {
-            if (!isIgnorar(nomeLimpo)) {
-                const beb = findBebida(nomeLimpo);
-                if (beb) {
-                    vendas.bebidas.push({ ...beb, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-                } else if (valor > 0) {
-                    vendas.bebidas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-                }
+        // 4. BEBIDAS (em qualquer seção)
+        if (isBebidaItem(nomeLimpo)) {
+            const beb = findBebida(nomeLimpo);
+            if (beb) {
+                const existe = vendas.bebidas.find(b => b.id === beb.id);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.bebidas.push({ ...beb, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+            } else {
+                const existe = vendas.bebidas.find(b => norm(b.nome) === norm(nomeLimpo));
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.bebidas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             }
             continue;
         }
         
-        // 5. SOBREMESAS (seção)
+        // 5. BEBIDAS (seção bebidas)
+        if (secaoAtual === 'bebidas') {
+            const beb = findBebida(nomeLimpo);
+            if (beb) {
+                const existe = vendas.bebidas.find(b => b.id === beb.id);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.bebidas.push({ ...beb, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+            } else if (valor > 0 || qtd > 0) {
+                const existe = vendas.bebidas.find(b => norm(b.nome) === norm(nomeLimpo));
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.bebidas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+            }
+            continue;
+        }
+        
+        // 6. SOBREMESAS (seção sobremesas)
         if (secaoAtual === 'sobremesas') {
             const sob = findSobremesa(nomeLimpo);
             if (sob) {
-                vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+                const existe = vendas.sobremesas.find(s => s.id === sob.id);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             } else if (valor > 0) {
                 vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             }
             continue;
         }
         
-        // 6. EXTRAS (seção)
+        // 7. EXTRAS (seção extras)
         if (secaoAtual === 'extras') {
             const ext = findExtra(nomeLimpo);
             if (ext) {
-                vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+                const existe = vendas.extras.find(e => e.id === ext.id);
+                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
+                else vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             } else if (valor > 0) {
                 vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
             }
             continue;
         }
         
-        // 7. MACARRÃO - sub-item com sabor + tamanho
-        if (secaoAtual === 'macarrao' && temSabor(nomeLimpo)) {
+        // 8. MACARRÃO - Sub-item COM sabor E tamanho
+        if (secaoAtual === 'macarrao' || secaoAtual === 'macarrao_g') {
+            const sabor = extrairSabor(nomeLimpo);
             const tam = getTamanho(nomeLimpo);
-            const prod = findProd(nomeLimpo, tam, 'macarrao');
-            if (prod) {
-                addProdVenda(prod, qtd, valor, 'Macarrão', tam, 'macarrao');
-            } else {
-                vendas.naoEncontrados.push({ nome: nomeLimpo, tam, qtd, cat: 'macarrao' });
+            
+            if (sabor && tam) {
+                const prod = findProd(nomeLimpo, tam, 'macarrao');
+                if (prod) addProdVenda(prod, qtd, valor, 'Macarrão', tam, 'macarrao');
+                else vendas.naoEncontrados.push({ nome: nomeLimpo, tam, qtd, cat: 'macarrao' });
             }
             continue;
         }
         
-        // 8. RISOTO em combos
-        if ((secaoAtual === 'combos' || secaoAtual === 'risoto') && nomeL.includes('risoto')) {
+        // 9. RISOTO em combos
+        if (secaoAtual === 'combos' && nomeLimpoL.includes('risoto')) {
             const prod = findProd(nomeLimpo, 'G', 'risoto');
-            if (prod) addProdVenda(prod, qtd, valor, 'Combo', 'G', 'risoto');
+            if (prod) addProdVenda(prod, qtd, valor, 'Combo Risoto', 'G', 'risoto');
             else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'risoto' });
             continue;
         }
         
-        // 9. NHOQUE em combos (ignorar tradicional, contar recheado como extra)
-        if ((secaoAtual === 'combos' || secaoAtual === 'nhoque') && nomeL.includes('nhoque')) {
-            // Nhoque com sabor = produto
-            if (temSabor(nomeLimpo)) {
-                const prod = findProd(nomeLimpo, 'G', 'nhoque');
-                if (prod) addProdVenda(prod, qtd, valor, 'Combo', 'G', 'nhoque');
-                else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'nhoque' });
-            }
-            continue;
-        }
-        
-        // 10. MACARRÃO em combos
-        if (secaoAtual === 'combos' && temSabor(nomeLimpo)) {
-            const tam = getTamanho(nomeLimpo);
-            const prod = findProd(nomeLimpo, tam, 'macarrao');
-            if (prod) {
-                addProdVenda(prod, qtd, valor, 'Combo', tam, 'macarrao');
+        // 10. COMBOS - Sub-itens COM sabor E tamanho (Box G ou Box Kids)
+        if (secaoAtual === 'combos') {
+            const sabor = extrairSabor(nomeLimpo);
+            let tam = getTamanho(nomeLimpo);
+            
+            // Boiadeirinha = Box Kids = P
+            if (isBoiadeirinha && nomeLimpoL.includes('box kids')) tam = 'P';
+            
+            if (sabor && tam) {
+                const prod = findProd(nomeLimpo, tam, 'macarrao');
+                if (prod) addProdVenda(prod, qtd, valor, 'Combo', tam, 'macarrao');
+                else vendas.naoEncontrados.push({ nome: nomeLimpo, tam, qtd, cat: 'macarrao' });
             }
             continue;
         }
@@ -1656,19 +1750,12 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 // Init - verificar sessão existente
 console.log('Verificando sessão...');
 sb.auth.getSession().then(({ data: { session } }) => {
-    console.log('Sessão:', session ? 'existe' : 'não existe', 'hasLoaded:', hasLoaded);
-    if (session?.user && !hasLoaded) {
-        console.log('Iniciando app para:', session.user.email);
-        currentUser = session.user;
-        $('auth-screen').style.display = 'none';
-        $('app-screen').classList.add('visible');
-        $('user-email').textContent = currentUser.email;
-        hasLoaded = true;
-        loadAll().then(() => console.log('loadAll finalizado!')).catch(e => console.error('loadAll erro:', e));
-    } else if (!session) {
+    console.log('Sessão inicial:', session ? 'existe' : 'não existe');
+    if (!session) {
         console.log('Sem sessão, mostrando login');
         loading(false);
     }
+    // O onAuthStateChange vai disparar e chamar loadAll
 }).catch(e => {
     console.error('Erro getSession:', e);
     loading(false);
