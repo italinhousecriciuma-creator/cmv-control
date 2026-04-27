@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v10.2.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v10.3.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -585,51 +585,98 @@ async function fetchWithTimeout(promise, ms = 10000) {
     return Promise.race([promise, timeout]);
 }
 
-async function loadAll() {
-    console.log('loadAll: início', new Date().toISOString());
-    const startTime = Date.now();
-    loading(true, 'Carregando seus dados...');
-    
-    // Timer de aviso se demorar muito
-    const slowTimer = setTimeout(() => {
-        loading(true, 'Conectando ao servidor...');
-    }, 3000);
-    const slowTimer2 = setTimeout(() => {
-        loading(true, 'Quase lá... primeira carga é mais lenta');
-    }, 7000);
-    
+// Helper: query com timeout INDIVIDUAL (se travar, segue com vazio)
+function queryWithTimeout(promise, ms = 8000, label = '') {
+    return new Promise((resolve) => {
+        let done = false;
+        const timer = setTimeout(() => {
+            if (!done) {
+                done = true;
+                console.warn(`⏱️ Timeout ${label} após ${ms}ms`);
+                resolve({ data: null, error: { message: 'timeout' } });
+            }
+        }, ms);
+        promise.then(r => {
+            if (!done) { done = true; clearTimeout(timer); resolve(r); }
+        }).catch(e => {
+            if (!done) { done = true; clearTimeout(timer); resolve({ data: null, error: e }); }
+        });
+    });
+}
+
+// Cache em sessionStorage para acelerar visitas seguintes
+function loadFromCache(userId) {
     try {
-        if (!currentUser?.id) {
-            console.error('loadAll: sem currentUser, abortando');
-            clearTimeout(slowTimer); clearTimeout(slowTimer2);
-            loading(false);
-            return;
-        }
+        const k = `cmv-cache-${userId}`;
+        const raw = sessionStorage.getItem(k);
+        if (!raw) return null;
+        const c = JSON.parse(raw);
+        // Cache válido por 5 minutos
+        if (Date.now() - c.t > 5 * 60 * 1000) return null;
+        return c.d;
+    } catch(e) { return null; }
+}
+
+function saveToCache(userId, data) {
+    try {
+        sessionStorage.setItem(`cmv-cache-${userId}`, JSON.stringify({ t: Date.now(), d: data }));
+    } catch(e) {}
+}
+
+async function loadAll() {
+    const startTime = Date.now();
+    console.log('🚀 loadAll: início');
+    
+    if (!currentUser?.id) {
+        console.error('loadAll: sem currentUser');
+        loading(false);
+        return;
+    }
+    
+    // 1. CARREGAR DO CACHE PRIMEIRO (instantâneo)
+    const cached = loadFromCache(currentUser.id);
+    if (cached) {
+        console.log('⚡ Carregando do cache (instantâneo)');
+        perfil = cached.perfil || { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
+        DB.produtos = cached.produtos || [];
+        DB.bebidas = cached.bebidas || [];
+        DB.sobremesas = cached.sobremesas || [];
+        DB.extras = cached.extras || [];
+        DB.ingredientes = cached.ingredientes || [];
+        DB.fichas = cached.fichas || [];
+        DB.vendas = cached.vendas || [];
+        DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
+        carregarTaxas();
+        renderAll();
+        loading(false);
+    } else {
+        loading(true, 'Carregando seus dados...');
+    }
+    
+    // 2. BUSCAR DADOS FRESCOS DO SUPABASE (em paralelo, com timeout)
+    try {
+        const queries = [
+            queryWithTimeout(sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(), 8000, 'perfis'),
+            queryWithTimeout(sb.from('produtos').select('*').order('nome'), 8000, 'produtos'),
+            queryWithTimeout(sb.from('bebidas').select('*').order('nome'), 8000, 'bebidas'),
+            queryWithTimeout(sb.from('sobremesas').select('*').order('nome'), 8000, 'sobremesas'),
+            queryWithTimeout(sb.from('extras').select('*').order('nome'), 8000, 'extras'),
+            queryWithTimeout(sb.from('ingredientes').select('*').order('nome'), 8000, 'ingredientes'),
+            queryWithTimeout(sb.from('fichas').select('*'), 8000, 'fichas'),
+            queryWithTimeout(sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').order('created_at', { ascending: false }), 8000, 'vendas')
+        ];
         
-        // PARALELO + RENDER PROGRESSIVO
-        // Dispara todas as queries simultaneamente
-        const promises = {
-            perfil: sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(),
-            produtos: sb.from('produtos').select('*').order('nome'),
-            bebidas: sb.from('bebidas').select('*').order('nome'),
-            sobremesas: sb.from('sobremesas').select('*').order('nome'),
-            extras: sb.from('extras').select('*').order('nome'),
-            ingredientes: sb.from('ingredientes').select('*').order('nome'),
-            fichas: sb.from('fichas').select('*'),
-            vendas: sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').order('created_at', { ascending: false })
-        };
+        const [perfilRes, produtosRes, bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes] = await Promise.all(queries);
         
-        // Esperar perfil + produtos primeiro (mais críticos)
-        const [perfilRes, produtosRes] = await Promise.all([promises.perfil, promises.produtos]);
-        
-        const t1 = Date.now() - startTime;
-        console.log(`loadAll: perfil+produtos em ${t1}ms`);
+        const t = Date.now() - startTime;
+        console.log(`✓ loadAll: queries em ${t}ms`);
         
         // Processar perfil (auto-criar se não existir)
         if (perfilRes.data) {
             perfil = perfilRes.data;
-        } else {
-            console.log('loadAll: criando perfil...');
+        } else if (!perfilRes.error || perfilRes.error.message !== 'timeout') {
+            // Tentar criar perfil
+            console.log('Criando perfil...');
             try {
                 const { data: novoPerfil } = await sb.from('perfis').insert({
                     user_id: currentUser.id,
@@ -637,51 +684,50 @@ async function loadAll() {
                     plano: 'free',
                     taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0
                 }).select().maybeSingle();
-                perfil = novoPerfil || { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
+                if (novoPerfil) perfil = novoPerfil;
             } catch(e) {
-                console.error('loadAll: erro perfil', e.message);
-                perfil = { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
+                console.error('Erro perfil:', e.message);
             }
         }
         
-        DB.produtos = produtosRes.data || [];
-        carregarTaxas();
+        // Atribuir dados (só se a query retornou - mantém cache se falhou)
+        if (produtosRes.data) DB.produtos = produtosRes.data;
+        if (bebidasRes.data) DB.bebidas = bebidasRes.data;
+        if (sobremesasRes.data) DB.sobremesas = sobremesasRes.data;
+        if (extrasRes.data) DB.extras = extrasRes.data;
+        if (ingredientesRes.data) DB.ingredientes = ingredientesRes.data;
+        if (fichasRes.data) DB.fichas = fichasRes.data;
+        if (vendasRes.data) DB.vendas = vendasRes.data;
         
-        // RENDERIZAR primeira vez (mostra app pro usuário)
-        loading(false);
-        clearTimeout(slowTimer); clearTimeout(slowTimer2);
-        
-        // Esperar resto em paralelo
-        const [bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes] = await Promise.all([
-            promises.bebidas, promises.sobremesas, promises.extras, 
-            promises.ingredientes, promises.fichas, promises.vendas
-        ]);
-        
-        DB.bebidas = bebidasRes.data || [];
-        DB.sobremesas = sobremesasRes.data || [];
-        DB.extras = extrasRes.data || [];
-        DB.ingredientes = ingredientesRes.data || [];
-        DB.fichas = fichasRes.data || [];
-        DB.vendas = vendasRes.data || [];
-        
-        // Calcular custos das fichas
+        // Calcular custos
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
         
-        // Renderizar tudo agora que tem todos os dados
+        // Salvar no cache para próxima visita
+        saveToCache(currentUser.id, {
+            perfil, produtos: DB.produtos, bebidas: DB.bebidas,
+            sobremesas: DB.sobremesas, extras: DB.extras,
+            ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas
+        });
+        
+        carregarTaxas();
         renderAll();
         
         const totalTime = Date.now() - startTime;
-        console.log(`loadAll: TUDO concluído em ${totalTime}ms`, {
+        console.log(`✓ loadAll: TOTAL ${totalTime}ms`, {
             produtos: DB.produtos.length, bebidas: DB.bebidas.length,
-            sobremesas: DB.sobremesas.length, extras: DB.extras.length,
             ingredientes: DB.ingredientes.length, fichas: DB.fichas.length,
             vendas: DB.vendas.length
         });
+        
+        // Avisar se houve timeouts
+        const timeouts = [perfilRes, produtosRes, bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes]
+            .filter(r => r.error?.message === 'timeout').length;
+        if (timeouts > 0) {
+            toast(`${timeouts} consulta(s) lenta(s). Recarregue se faltar dado.`, true);
+        }
     } catch (e) {
         console.error('loadAll ERRO:', e);
-        toast('Erro ao carregar: ' + e.message, true);
     } finally {
-        clearTimeout(slowTimer); clearTimeout(slowTimer2);
         loading(false);
     }
 }
@@ -1875,7 +1921,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 
 
 // Init - verificar sessão existente imediatamente
-console.log('🚀 CMV Control v10.2.0 - inicializando...');
+console.log('🚀 CMV Control v10.3.0 - inicializando...');
 (async () => {
     try {
         const t0 = Date.now();
