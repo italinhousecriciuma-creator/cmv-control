@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v10.0.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v10.1.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -374,7 +374,7 @@ td{font-size:0.9rem;}
 <div class="modal-bg" id="mod-confirm"><div class="modal" style="max-width:350px;"><div class="modal-body" style="text-align:center;padding:2rem;"><div id="conf-icon" style="font-size:3rem;margin-bottom:1rem;"></div><h3 id="conf-title" style="margin-bottom:0.5rem;"></h3><p id="conf-text" style="color:var(--txt2);margin-bottom:1.5rem;"></p><div style="display:flex;gap:0.75rem;"><button class="btn btn-s" style="flex:1;" onclick="fecharModal('mod-confirm')">Cancelar</button><button class="btn btn-d" style="flex:1;" id="conf-btn">Excluir</button></div></div></div></div>
 
 <div class="toast" id="toast" style="display:none;"></div>
-<div class="loading" id="loading"><div class="spinner"></div></div>
+<div class="loading" id="loading"><div class="spinner"></div><div id="loading-text" style="margin-top:1rem;color:white;font-size:0.9rem;">Carregando...</div></div>
 
 <script>
 // ========================================
@@ -415,8 +415,10 @@ function toast(msg, isError = false) {
     setTimeout(() => t.style.display = 'none', 3000);
 }
 
-function loading(show) {
+function loading(show, msg) {
     $('loading').classList.toggle('show', show);
+    const t = $('loading-text');
+    if (t) t.textContent = msg || 'Carregando...';
 }
 
 // ========================================
@@ -505,22 +507,73 @@ async function handleLogout() {
 // ========================================
 // INIT
 // ========================================
-let hasLoaded = false;
-sb.auth.onAuthStateChange(async (event, session) => {
-    if (session?.user) {
-        currentUser = session.user;
-        $('auth-screen').style.display = 'none';
-        $('app-screen').classList.add('visible');
-        $('user-email').textContent = currentUser.email;
-        if (!hasLoaded) {
-            hasLoaded = true;
+let lastUserId = null;
+let isLoading = false;
+
+async function showApp(user) {
+    currentUser = user;
+    $('auth-screen').style.display = 'none';
+    $('app-screen').classList.add('visible');
+    $('user-email').textContent = user.email;
+    
+    // Só recarregar se mudou de usuário ou nunca carregou
+    if (lastUserId !== user.id && !isLoading) {
+        lastUserId = user.id;
+        isLoading = true;
+        try {
             await loadAll();
+        } finally {
+            isLoading = false;
         }
-    } else {
-        currentUser = null;
-        hasLoaded = false;
-        $('auth-screen').style.display = 'flex';
-        $('app-screen').classList.remove('visible');
+    }
+}
+
+function showLogin() {
+    currentUser = null;
+    lastUserId = null;
+    $('auth-screen').style.display = 'flex';
+    $('app-screen').classList.remove('visible');
+    loading(false);
+}
+
+sb.auth.onAuthStateChange(async (event, session) => {
+    console.log('Auth event:', event, session?.user?.email);
+    
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        if (session?.user) {
+            await showApp(session.user);
+        } else {
+            showLogin();
+        }
+    } else if (event === 'SIGNED_OUT') {
+        showLogin();
+    }
+});
+
+// Sincronizar entre abas: detectar mudanças no localStorage do Supabase
+window.addEventListener('storage', async (e) => {
+    if (e.key && e.key.includes('sb-') && e.key.includes('-auth-token')) {
+        console.log('Auth alterada em outra aba, sincronizando...');
+        const { data: { session } } = await sb.auth.getSession();
+        if (session?.user) {
+            await showApp(session.user);
+        } else {
+            showLogin();
+        }
+    }
+});
+
+// Detectar quando a aba volta a ficar visível (recarregar dados se necessário)
+document.addEventListener('visibilitychange', async () => {
+    if (!document.hidden && currentUser) {
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session) {
+            console.log('Sessão expirou enquanto aba estava oculta');
+            showLogin();
+        } else if (session.user.id !== currentUser?.id) {
+            console.log('Usuário diferente, recarregando');
+            await showApp(session.user);
+        }
     }
 });
 
@@ -533,71 +586,93 @@ async function fetchWithTimeout(promise, ms = 10000) {
 }
 
 async function loadAll() {
-    console.log('loadAll: início');
-    loading(true);
+    console.log('loadAll: início', new Date().toISOString());
+    loading(true, 'Carregando seus dados...');
+    const startTime = Date.now();
+    
     try {
-        console.log('loadAll: carregando perfil...');
-        let perfilData = null;
-        try {
-            const result = await fetchWithTimeout(sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(), 15000);
-            perfilData = result.data;
-            console.log('loadAll: perfil carregado', perfilData);
-        } catch(e) {
-            console.log('loadAll: timeout/erro no perfil, usando padrão', e.message);
-            perfilData = null;
+        if (!currentUser?.id) {
+            console.error('loadAll: sem currentUser, abortando');
+            loading(false);
+            return;
         }
-        perfil = perfilData || { taxa_ifood: 10, taxa_anota: 0, royalties: 5, imposto: 0 };
         
-        console.log('loadAll: carregando tabelas...');
-        try {
-            const r1 = await fetchWithTimeout(sb.from('produtos').select('*').order('nome'), 15000);
-            DB.produtos = r1.data || [];
-        } catch(e) { console.error('produtos erro:', e.message); DB.produtos = []; }
-        console.log('loadAll: produtos', DB.produtos.length);
+        // PARALELO: dispara TODAS as queries de uma vez
+        console.log('loadAll: disparando queries em paralelo...');
+        const [
+            perfilRes, produtosRes, bebidasRes, sobremesasRes, 
+            extrasRes, ingredientesRes, fichasRes, vendasRes
+        ] = await Promise.all([
+            sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(),
+            sb.from('produtos').select('*').order('nome'),
+            sb.from('bebidas').select('*').order('nome'),
+            sb.from('sobremesas').select('*').order('nome'),
+            sb.from('extras').select('*').order('nome'),
+            sb.from('ingredientes').select('*').order('nome'),
+            sb.from('fichas').select('*'),
+            sb.from('vendas').select('*').order('created_at', { ascending: false })
+        ]);
         
-        try {
-            const r2 = await fetchWithTimeout(sb.from('bebidas').select('*').order('nome'), 15000);
-            DB.bebidas = r2.data || [];
-        } catch(e) { DB.bebidas = []; }
+        const elapsed = Date.now() - startTime;
+        console.log(`loadAll: queries concluídas em ${elapsed}ms`);
         
-        try {
-            const r3 = await fetchWithTimeout(sb.from('sobremesas').select('*').order('nome'), 15000);
-            DB.sobremesas = r3.data || [];
-        } catch(e) { DB.sobremesas = []; }
+        // Processar perfil (auto-criar se não existir)
+        if (perfilRes.data) {
+            perfil = perfilRes.data;
+            console.log('loadAll: perfil carregado');
+        } else {
+            console.log('loadAll: perfil não existe, criando...');
+            try {
+                const { data: novoPerfil } = await sb.from('perfis').insert({
+                    user_id: currentUser.id,
+                    restaurante_nome: 'Meu Restaurante',
+                    plano: 'free',
+                    taxa_ifood: 10,
+                    taxa_anota: 0,
+                    royalties: 0,
+                    imposto: 0
+                }).select().maybeSingle();
+                perfil = novoPerfil || { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
+                console.log('loadAll: perfil criado');
+            } catch(e) {
+                console.error('loadAll: erro ao criar perfil', e.message);
+                perfil = { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
+            }
+        }
         
-        try {
-            const r4 = await fetchWithTimeout(sb.from('extras').select('*').order('nome'), 15000);
-            DB.extras = r4.data || [];
-        } catch(e) { DB.extras = []; }
+        // Atribuir dados (com fallback para array vazio)
+        DB.produtos = produtosRes.data || [];
+        DB.bebidas = bebidasRes.data || [];
+        DB.sobremesas = sobremesasRes.data || [];
+        DB.extras = extrasRes.data || [];
+        DB.ingredientes = ingredientesRes.data || [];
+        DB.fichas = fichasRes.data || [];
+        DB.vendas = vendasRes.data || [];
         
-        try {
-            const r5 = await fetchWithTimeout(sb.from('ingredientes').select('*').order('nome'), 15000);
-            DB.ingredientes = r5.data || [];
-        } catch(e) { DB.ingredientes = []; }
+        console.log('loadAll: dados carregados', {
+            produtos: DB.produtos.length,
+            bebidas: DB.bebidas.length,
+            sobremesas: DB.sobremesas.length,
+            extras: DB.extras.length,
+            ingredientes: DB.ingredientes.length,
+            fichas: DB.fichas.length,
+            vendas: DB.vendas.length
+        });
         
-        try {
-            const r6 = await fetchWithTimeout(sb.from('fichas').select('*'), 15000);
-            DB.fichas = r6.data || [];
-        } catch(e) { DB.fichas = []; }
-        
-        try {
-            const r7 = await fetchWithTimeout(sb.from('vendas').select('*').order('created_at', { ascending: false }), 15000);
-            DB.vendas = r7.data || [];
-        } catch(e) { DB.vendas = []; }
-        
-        console.log('loadAll: calculando custos...');
+        // Calcular custos
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
         
-        console.log('loadAll: renderizando...');
+        // Renderizar
         carregarTaxas();
         renderAll();
-        console.log('loadAll: concluído!');
+        
+        const totalTime = Date.now() - startTime;
+        console.log(`loadAll: concluído em ${totalTime}ms`);
     } catch (e) {
         console.error('loadAll ERRO:', e);
-        toast('Erro ao carregar', true);
+        toast('Erro ao carregar dados: ' + e.message, true);
     }
     loading(false);
-    console.log('loadAll: loading removido');
 }
 
 // ========================================
@@ -778,13 +853,18 @@ $('form-prod').onsubmit = async e => {
     loading(true);
     let result;
     if (id) {
-        result = await sb.from('produtos').update(data).eq('id', id).select().single();
-        if (!result.error) {
+        result = await sb.from('produtos').update(data).eq('id', id).select().maybeSingle();
+        if (!result.error && result.data) {
             const idx = DB.produtos.findIndex(x => x.id === id);
             if (idx >= 0) DB.produtos[idx] = { ...DB.produtos[idx], ...result.data };
         }
     } else {
-        result = await sb.from('produtos').insert(data).select().single();
+        result = await sb.from('produtos').insert(data).select().maybeSingle();
+        if (!result.error && !result.data) {
+            // Recarregar caso retorne null
+            const r = await sb.from('produtos').select('*').order('nome');
+            DB.produtos = r.data || [];
+        }
         if (!result.error) DB.produtos.push(result.data);
     }
     loading(false);
@@ -804,8 +884,8 @@ $('form-beb').onsubmit = async e => {
     const data = { nome: $('beb-nome').value, custo: parseFloat($('beb-custo').value) || 0, preco_ifood: parseFloat($('beb-pif').value) || 0, preco_anota: parseFloat($('beb-pan').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('bebidas').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.bebidas.findIndex(x => x.id === id); if (idx >= 0) DB.bebidas[idx] = { ...DB.bebidas[idx], ...result.data }; } }
-    else { result = await sb.from('bebidas').insert(data).select().single(); if (!result.error) DB.bebidas.push(result.data); }
+    if (id) { result = await sb.from('bebidas').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.bebidas.findIndex(x => x.id === id); if (idx >= 0) DB.bebidas[idx] = { ...DB.bebidas[idx], ...result.data }; } }
+    else { result = await sb.from('bebidas').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.bebidas.push(result.data); else if (!result.error) { const r = await sb.from('bebidas').select('*').order('nome'); DB.bebidas = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-beb'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -817,8 +897,8 @@ $('form-sob').onsubmit = async e => {
     const data = { nome: $('sob-nome').value, custo: parseFloat($('sob-custo').value) || 0, preco_ifood: parseFloat($('sob-pif').value) || 0, preco_anota: parseFloat($('sob-pan').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('sobremesas').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.sobremesas.findIndex(x => x.id === id); if (idx >= 0) DB.sobremesas[idx] = { ...DB.sobremesas[idx], ...result.data }; } }
-    else { result = await sb.from('sobremesas').insert(data).select().single(); if (!result.error) DB.sobremesas.push(result.data); }
+    if (id) { result = await sb.from('sobremesas').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.sobremesas.findIndex(x => x.id === id); if (idx >= 0) DB.sobremesas[idx] = { ...DB.sobremesas[idx], ...result.data }; } }
+    else { result = await sb.from('sobremesas').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.sobremesas.push(result.data); else if (!result.error) { const r = await sb.from('sobremesas').select('*').order('nome'); DB.sobremesas = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-sob'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -830,8 +910,8 @@ $('form-ext').onsubmit = async e => {
     const data = { nome: $('ext-nome').value, custo: parseFloat($('ext-custo').value) || 0, preco: parseFloat($('ext-preco').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('extras').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.extras.findIndex(x => x.id === id); if (idx >= 0) DB.extras[idx] = { ...DB.extras[idx], ...result.data }; } }
-    else { result = await sb.from('extras').insert(data).select().single(); if (!result.error) DB.extras.push(result.data); }
+    if (id) { result = await sb.from('extras').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.extras.findIndex(x => x.id === id); if (idx >= 0) DB.extras[idx] = { ...DB.extras[idx], ...result.data }; } }
+    else { result = await sb.from('extras').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.extras.push(result.data); else if (!result.error) { const r = await sb.from('extras').select('*').order('nome'); DB.extras = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-ext'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -843,8 +923,8 @@ $('form-ing').onsubmit = async e => {
     const data = { nome: $('ing-nome').value, un: $('ing-un').value, custo: parseFloat($('ing-custo').value) || 0, forn: $('ing-forn').value, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('ingredientes').update(data).eq('id', id).select().single(); if (!result.error) { const idx = DB.ingredientes.findIndex(x => x.id === id); if (idx >= 0) DB.ingredientes[idx] = { ...DB.ingredientes[idx], ...result.data }; } }
-    else { result = await sb.from('ingredientes').insert(data).select().single(); if (!result.error) DB.ingredientes.push(result.data); }
+    if (id) { result = await sb.from('ingredientes').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.ingredientes.findIndex(x => x.id === id); if (idx >= 0) DB.ingredientes[idx] = { ...DB.ingredientes[idx], ...result.data }; } }
+    else { result = await sb.from('ingredientes').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.ingredientes.push(result.data); else if (!result.error) { const r = await sb.from('ingredientes').select('*').order('nome'); DB.ingredientes = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-ing'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -1089,12 +1169,24 @@ async function addIngFicha() {
     if (!prodId || !ingId || !qtd || qtd <= 0) { toast('Preencha os campos!', true); return; }
     
     loading(true);
-    const { data, error } = await sb.from('fichas').insert({ produto_id: prodId, ingrediente_id: ingId, qtd, un, user_id: currentUser.id }).select().single();
-    
-    if (error) {
-        toast('Erro: ' + error.message, true);
-    } else {
-        DB.fichas.push(data);
+    try {
+        const { data, error } = await sb.from('fichas').insert({ 
+            produto_id: prodId, 
+            ingrediente_id: ingId, 
+            qtd, un, 
+            user_id: currentUser.id 
+        }).select().maybeSingle();
+        
+        if (error) throw error;
+        
+        // Adicionar à DB
+        if (data) {
+            DB.fichas.push(data);
+        } else {
+            const r = await sb.from('fichas').select('*');
+            DB.fichas = r.data || [];
+        }
+        
         $('ficha-qtd').value = '';
         $('ficha-ing').value = '';
         
@@ -1110,6 +1202,8 @@ async function addIngFicha() {
         $('ficha-prod').value = prodId;
         carregarFicha();
         toast('Adicionado!');
+    } catch(e) {
+        toast('Erro: ' + e.message, true);
     }
     loading(false);
 }
@@ -1746,9 +1840,9 @@ try{
         total_qtd: detalhes.length,
         total_fat: v.totalFat,
         total_custo: custoTotal
-    }).select().single();
+    }).select().maybeSingle();
     if (error) throw error;
-    DB.vendas.push(result);
+    if (result) DB.vendas.push(result);
     toast('Importado!');
     cancelarImport();
     renderAll();
@@ -1758,19 +1852,28 @@ loading(false);}
 function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileInput.value='';$('upload-file').textContent='';uploadBox.classList.remove('has-file');}
 
 
-// Init - verificar sessão existente
-console.log('Verificando sessão...');
-sb.auth.getSession().then(({ data: { session } }) => {
-    console.log('Sessão inicial:', session ? 'existe' : 'não existe');
-    if (!session) {
-        console.log('Sem sessão, mostrando login');
-        loading(false);
+// Init - verificar sessão existente imediatamente
+console.log('Verificando sessão inicial...');
+(async () => {
+    try {
+        const { data: { session }, error } = await sb.auth.getSession();
+        if (error) {
+            console.error('Erro getSession:', error);
+            showLogin();
+            return;
+        }
+        if (session?.user) {
+            console.log('Sessão encontrada:', session.user.email);
+            await showApp(session.user);
+        } else {
+            console.log('Sem sessão, mostrando login');
+            showLogin();
+        }
+    } catch(e) {
+        console.error('Erro init:', e);
+        showLogin();
     }
-    // O onAuthStateChange vai disparar e chamar loadAll
-}).catch(e => {
-    console.error('Erro getSession:', e);
-    loading(false);
-});
+})();
 </script>
 </body>
 </html>
