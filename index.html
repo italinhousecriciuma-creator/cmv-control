@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.1.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.3.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -1453,6 +1453,17 @@ function processarExcel(data) {
         detalhes: { macP: [], macG: [], risoto: [], nhoque: [] }
     };
     
+    // === DEDUPLICAÇÃO: Nhoque Recheado de Muçarela ===
+    // O iFood às vezes duplica essa linha em sub-blocos próximos.
+    // Tracking: chave (nome+qtd+val) -> última linha em que apareceu.
+    // Só desduplica se a duplicata estiver a ≤8 linhas de distância.
+    const recheadoVistos = new Map(); // chave -> índice da linha
+    const DEDUP_DISTANCIA = 8;
+    const eRecheadoMucarela = (n) => {
+        const nL = n.toLowerCase();
+        return nL.includes('nhoque recheado') && (nL.includes('muçarela') || nL.includes('mussarela'));
+    };
+    
     // === FUNÇÕES AUXILIARES ===
     const norm = n => n.toLowerCase()
         .replace(/\(aprox\.?\s*[\d,]+\s*g?\)/gi, '')
@@ -1513,7 +1524,7 @@ function processarExcel(data) {
     
     // Extra (qualquer contexto)
     const isExtra = n => {
-        const nL = n.toLowerCase();
+        const nL = n.toLowerCase().trim();
         return nL.startsWith('extra ') || 
                nL.includes('pimenta do reino') ||
                nL.includes('polenta com ragu') ||
@@ -1523,7 +1534,8 @@ function processarExcel(data) {
                nL.includes('acompanhamento +sobremesa') ||
                (nL.includes('nhoque recheado') && (nL.includes('muçarela') || nL.includes('mussarela'))) ||
                nL.includes('crostini') ||
-               nL.includes('molho de pimenta');
+               nL.includes('molho de pimenta') ||
+               nL.startsWith('preciso de talher');  // só "Preciso", "Não preciso" é ignorado
     };
     
     // Itens a IGNORAR completamente
@@ -1534,8 +1546,7 @@ function processarExcel(data) {
                nL.includes('caracolino') ||
                nL.includes('fettuccine') ||
                (nL.includes('nhoque tradicional')) ||
-               nL.includes('não preciso de talher') ||
-               nL.includes('preciso de talher') ||
+               nL.includes('não preciso de talher') ||  // sem hífen: só "Não preciso"
                nL.includes('opção vegetariana') ||
                nL.includes('copo um brinde') ||
                nL.includes('chaveiro');
@@ -1801,8 +1812,15 @@ function processarExcel(data) {
         
         // === CONTEXTO NHOQUE ===
         if (contexto === 'nhoque') {
-            // Nhoque Recheado de Muçarela = EXTRA (você confirmou)
-            if (nL.includes('nhoque recheado') && (nL.includes('muçarela') || nL.includes('mussarela'))) {
+            // Nhoque Recheado de Muçarela = EXTRA (com dedup de duplicatas próximas)
+            if (eRecheadoMucarela(nomeLimpo)) {
+                const chave = `${nomeLimpo.toLowerCase()}|${qtd}|${valor.toFixed(2)}`;
+                const ultimaLinha = recheadoVistos.get(chave);
+                if (ultimaLinha !== undefined && (i - ultimaLinha) <= DEDUP_DISTANCIA) {
+                    // Duplicata próxima (provável erro de export do iFood) - pula
+                    continue;
+                }
+                recheadoVistos.set(chave, i);
                 addExtra(nomeLimpo, qtd, valor);
                 continue;
             }
@@ -1876,8 +1894,14 @@ function processarExcel(data) {
                 addSobremesa(nomeLimpo, qtd, valor);
                 continue;
             }
-            // Nhoque Recheado de Muçarela em combo = Extra
-            if (nL.includes('nhoque recheado') && (nL.includes('muçarela') || nL.includes('mussarela'))) {
+            // Nhoque Recheado de Muçarela em combo = Extra (com dedup)
+            if (eRecheadoMucarela(nomeLimpo)) {
+                const chave = `${nomeLimpo.toLowerCase()}|${qtd}|${valor.toFixed(2)}`;
+                const ultimaLinha = recheadoVistos.get(chave);
+                if (ultimaLinha !== undefined && (i - ultimaLinha) <= DEDUP_DISTANCIA) {
+                    continue;
+                }
+                recheadoVistos.set(chave, i);
                 addExtra(nomeLimpo, qtd, valor);
                 continue;
             }
@@ -2004,7 +2028,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 
 
 // Init - verificar sessão existente imediatamente
-console.log('🚀 CMV Control v12.1.0 - inicializando...');
+console.log('🚀 CMV Control v12.3.0 - inicializando...');
 (async () => {
     try {
         const t0 = Date.now();
