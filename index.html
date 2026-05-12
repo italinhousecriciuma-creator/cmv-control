@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.0.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.1.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -1567,7 +1567,7 @@ function processarExcel(data) {
         return false;
     };
     
-    // Detectar sub-combo (Combo Grande, Combo Casal, etc dentro de "Combos Ital'in House!")
+    // Detectar sub-combo (totalizadores dentro de contexto combos)
     const detectarSubCombo = n => {
         const nL = n.toLowerCase();
         if (nL.includes('combo grande')) return 'combo_g';
@@ -1576,11 +1576,11 @@ function processarExcel(data) {
         if (nL.includes('combo risoto')) return 'combo_risoto';
         if (nL.includes('boiadeirinha') && !nL.includes('chaveiro')) return 'combo_p';
         if (nL.includes('combo turma')) return 'combo_p';
-        if (nL.includes('especial de almoço')) return 'combo_g';
+        if (nL.includes('especial de almoço')) return 'combo_p'; // Box P!
         if (nL.includes('diversos - box no precinho')) return 'combo_g';
         if (nL.includes('diversos - macarrão')) return 'combo_g';
         if (nL.includes('diversos - combo um brinde')) return 'combo_g';
-        if (nL.includes('coleção um brinde')) return 'combo_g';
+        if (nL === 'coleção um brinde à itália i coca-coca & ital\'in house') return 'colecao';
         return null;
     };
     
@@ -1848,14 +1848,23 @@ function processarExcel(data) {
         
         // === CONTEXTO COMBOS ===
         if (contexto === 'combos') {
-            // Detectar mudança de sub-combo (Combo Grande, Combo Casal, etc)
+            // Detectar mudança de sub-combo (Combo Grande, Casal, Boiadeirinha, Especial de Almoço, etc)
             const novoSub = detectarSubCombo(nomeLimpo);
             if (novoSub) {
                 subContextoCombo = novoSub;
-                continue; // O nome do combo é só título
+                continue; // O nome do sub-combo é só título totalizador
             }
             
-            if (!subContextoCombo) continue;
+            // IGNORAR sub-itens que são tipos de massa (mesmo dentro de combos)
+            // "Penne (Box G)", "Talharim (Box G)", "Caracolino (Box G)" = tipo de massa
+            const ehTipoMassa = (nL.includes('penne') && !nL.includes('integral')) || 
+                                nL.includes('talharim') || 
+                                nL.includes('caracolino') ||
+                                nL.includes('fettuccine');
+            if (ehTipoMassa) continue;
+            
+            // IGNORAR Nhoque Tradicional (tipo de massa)
+            if (nL.includes('nhoque tradicional')) continue;
             
             // BEBIDAS dentro de combos
             if (isBebida(nomeLimpo)) {
@@ -1867,48 +1876,46 @@ function processarExcel(data) {
                 addSobremesa(nomeLimpo, qtd, valor);
                 continue;
             }
+            // Nhoque Recheado de Muçarela em combo = Extra
+            if (nL.includes('nhoque recheado') && (nL.includes('muçarela') || nL.includes('mussarela'))) {
+                addExtra(nomeLimpo, qtd, valor);
+                continue;
+            }
             // EXTRAS dentro de combos
             if (isExtra(nomeLimpo)) {
                 addExtra(nomeLimpo, qtd, valor);
                 continue;
             }
             
-            // Nhoque Recheado de Muçarela em combo = Extra
-            if (nL.includes('nhoque recheado') && (nL.includes('muçarela') || nL.includes('mussarela'))) {
-                addExtra(nomeLimpo, qtd, valor);
+            // RISOTO em combo = Risoto
+            if (nL.includes('risoto')) {
+                const prod = findProd(nomeLimpo, 'G', 'risoto');
+                addProd(prod, qtd, valor, 'Combo', 'G', 'risoto', nomeLimpo);
                 continue;
             }
             
-            // PRATOS dentro de combos
-            if (subContextoCombo === 'combo_risoto') {
-                if (nL.includes('risoto')) {
-                    const prod = findProd(nomeLimpo, 'G', 'risoto');
-                    addProd(prod, qtd, valor, 'Combo Risoto', 'G', 'risoto', nomeLimpo);
-                }
+            // NHOQUE com sabor em combo = Nhoque
+            if (nL.includes('nhoque') && temSabor(nomeLimpo)) {
+                const prod = findProd(nomeLimpo, 'G', 'nhoque');
+                addProd(prod, qtd, valor, 'Combo', 'G', 'nhoque', nomeLimpo);
                 continue;
             }
             
-            if (subContextoCombo === 'combo_p') {
-                // Boiadeirinha: tudo é Box P
-                if (temSabor(nomeLimpo)) {
-                    const prod = findProd(nomeLimpo, 'P', 'macarrao');
-                    addProd(prod, qtd, valor, 'Boiadeirinha', 'P', 'macarrao', nomeLimpo);
-                }
+            // SABOR + Tamanho explícito no item: detecta diretamente
+            // Ex: "Bolonhesa (Box P)" / "Bolonhesa (Box G)" / "Camarão (Box G)"
+            const tamItem = getTamanho(nomeLimpo);
+            if (tamItem && temSabor(nomeLimpo)) {
+                const prod = findProd(nomeLimpo, tamItem, 'macarrao');
+                addProd(prod, qtd, valor, 'Combo', tamItem, 'macarrao', nomeLimpo);
                 continue;
             }
             
-            if (subContextoCombo === 'combo_g') {
-                // Nhoque em combo = Nhoque
-                if (nL.includes('nhoque') && !nL.includes('tradicional') && !nL.includes('recheado')) {
-                    const prod = findProd(nomeLimpo, 'G', 'nhoque');
-                    addProd(prod, qtd, valor, 'Combo', 'G', 'nhoque', nomeLimpo);
-                    continue;
-                }
-                // Sabor (Box G) = Mac G
-                if (temSabor(nomeLimpo) && (nL.includes('box g') || nL.includes('(box g)'))) {
-                    const prod = findProd(nomeLimpo, 'G', 'macarrao');
-                    addProd(prod, qtd, valor, 'Combo', 'G', 'macarrao', nomeLimpo);
-                }
+            // Sem tamanho explícito: usar tamanho padrão do sub-combo
+            if (temSabor(nomeLimpo) && subContextoCombo) {
+                let tamDefault = 'G';
+                if (subContextoCombo === 'combo_p') tamDefault = 'P';
+                const prod = findProd(nomeLimpo, tamDefault, 'macarrao');
+                addProd(prod, qtd, valor, 'Combo', tamDefault, 'macarrao', nomeLimpo);
                 continue;
             }
         }
@@ -1997,7 +2004,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 
 
 // Init - verificar sessão existente imediatamente
-console.log('🚀 CMV Control v12.0.0 - inicializando...');
+console.log('🚀 CMV Control v12.1.0 - inicializando...');
 (async () => {
     try {
         const t0 = Date.now();
