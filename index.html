@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v10.3.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v11.0.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -1454,7 +1454,9 @@ function processarExcel(data) {
         detalhes: { macP: [], macG: [], risoto: [], nhoque: [] }
     };
     
-    // Normalizar nome para comparação
+    // === FUNÇÕES AUXILIARES ===
+    
+    // Normalizar nome para comparação no cadastro
     const norm = n => n.toLowerCase()
         .replace(/\(aprox\.?\s*[\d,]+\s*g?\)/gi, '')
         .replace(/\(vale muito a pena!?\)/gi, '')
@@ -1463,7 +1465,7 @@ function processarExcel(data) {
         .replace(/\s+/g, ' ')
         .trim();
     
-    // Lista de sabores para identificar produtos
+    // Sabores conhecidos
     const sabores = [
         'cheddar com carne e bacon', 'cheddar carne bacon',
         'cheddar com bacon', 'cheddar bacon',
@@ -1473,14 +1475,119 @@ function processarExcel(data) {
         'bolonhesa', 'carbonara', 'pomodoro', 'broccoli', 'funghi', 'parisiense'
     ];
     
-    // Extrair sabor do nome
     const extrairSabor = nome => {
         const n = norm(nome);
         for (const s of sabores) if (n.includes(s)) return s;
         return null;
     };
     
-    // Funções de busca no cadastro
+    // === IDENTIFICADORES ===
+    
+    // É produto direto? (categoria PRINCIPAL que já é o produto)
+    const catEhProdutoDireto = nome => {
+        const nL = nome.toLowerCase();
+        // Macarrão Box G (com gramatura grande)
+        if (nL.includes('macarrão') && (nL.includes('800g') || nL.includes('750g'))) return 'macarrao_g';
+        // Risoto
+        if (nL.includes('risoto') && !nL.includes('combo')) return 'risoto';
+        // Nhoque
+        if (nL.includes('nhoque') && !nL.includes('combo')) return 'nhoque';
+        // Sobremesas
+        if (nL.includes('tiramisu') || nL.includes('cannoli') || 
+            nL.includes('brownie') || nL.includes('palha italiana')) return 'sobremesa';
+        // Extras (categorias que são extras diretos)
+        if (nL.includes('polenta') || nL.includes('crostini') || 
+            nL.includes('molho de pimenta')) return 'extra';
+        // Salada (é prato Box P de macarrão frio)
+        if (nL.includes('salada') && nL.includes('macarrão')) return 'salada';
+        return null;
+    };
+    
+    // É agrupador? (Categoria principal que NÃO é produto, só engloba subs)
+    const catEhAgrupador = nome => {
+        const nL = nome.toLowerCase().trim();
+        // Bebidas agrupadoras
+        if (nL.includes('refrigerante')) return 'bebidas';
+        if (nL === 'água') return 'bebidas';
+        if (nL === 'sucos') return 'bebidas';
+        if (nL === 'energético') return 'bebidas';
+        if (nL === 'vinho') return 'bebidas';
+        if (nL.includes('vai uma bebida')) return 'bebidas';
+        // Macarrão sem gramatura = agrupador (Bolonhesa, Cheddar, etc)
+        if (nL.includes('macarrão') && !nL.includes('800g') && !nL.includes('750g') && 
+            !nL.includes('combo') && !nL.includes('salada')) return 'macarrao';
+        return null;
+    };
+    
+    // É combo? (Categoria de combo - sub-itens são os pratos)
+    const catEhCombo = nome => {
+        const nL = nome.toLowerCase();
+        if (nL.includes('combo grande')) return 'combo_g';
+        if (nL.includes('combo casal')) return 'combo_g';
+        if (nL.includes('compre 3 leve 4')) return 'combo_g';
+        if (nL.includes('combo risoto')) return 'combo_risoto';
+        if (nL.includes('boiadeirinha') && !nL.includes('chaveiro')) return 'combo_p';
+        if (nL.includes('combo turma')) return 'combo_p';
+        if (nL.includes('especial de almoço')) return 'combo_g';
+        if (nL.includes('diversos - box no precinho')) return 'combo_g';
+        if (nL.includes('diversos - macarrão')) return 'combo_g';
+        if (nL.includes('diversos - combo um brinde')) return 'combo_g';
+        if (nL.includes('coleção um brinde')) return 'combo_g';
+        return null;
+    };
+    
+    // É bebida (pela palavra-chave)?
+    const isBebidaItem = n => {
+        const nL = n.toLowerCase();
+        return nL.includes('coca') || nL.includes('fanta') || nL.includes('sprite') ||
+               nL.includes('guaraná') || nL.includes('água') || nL.includes('suco') ||
+               nL.includes('monster') || nL.includes('h2o') || nL.includes('del valle') ||
+               nL.includes('néctar') || nL.includes('vinho') || nL.includes('cerveja');
+    };
+    
+    const isSobremesaItem = n => {
+        const nL = n.toLowerCase();
+        return nL.includes('brownie') || nL.includes('cannoli') ||
+               nL.includes('tiramisu') || nL.includes('palha italiana');
+    };
+    
+    const isExtraItem = n => {
+        const nL = n.toLowerCase();
+        return nL.startsWith('extra ') || 
+               nL.includes('pimenta do reino') ||
+               nL.includes('polenta com ragu') ||
+               nL.includes('espaguete grano duro') ||
+               nL.includes('penne integral') ||
+               nL.includes('acompanhamento + sobremesa') ||
+               nL.includes('acompanhamento +sobremesa') ||
+               (nL.includes('nhoque recheado') && nL.includes('muçarela')) ||
+               (nL.includes('nhoque recheado') && nL.includes('mussarela'));
+    };
+    
+    // É IGNORÁVEL?
+    const isIgnorar = n => {
+        const nL = n.toLowerCase();
+        return nL.includes('talharim') ||
+               (nL.includes('penne') && !nL.includes('integral')) ||
+               nL.includes('caracolino') ||
+               nL.includes('fettuccine') ||
+               (nL.includes('nhoque tradicional') && !nL.includes('combo')) ||
+               nL.includes('não preciso de talher') ||
+               nL.includes('preciso de talher') ||
+               nL.includes('opção vegetariana') ||
+               nL.includes('copo um brinde') ||
+               nL.includes('chaveiro');
+    };
+    
+    // Detectar tamanho
+    const getTamanho = n => {
+        const nL = n.toLowerCase();
+        if (nL.includes('box kids') || nL.includes('box p') || nL.includes('450g')) return 'P';
+        if (nL.includes('box g') || nL.includes('800g') || nL.includes('750g') || nL.includes('650g')) return 'G';
+        return null;
+    };
+    
+    // === BUSCAS NO CADASTRO ===
     const findProd = (nome, tam, cat) => {
         const sabor = extrairSabor(nome);
         if (!sabor) return null;
@@ -1488,7 +1595,7 @@ function processarExcel(data) {
             if (tam && p.tam !== tam) return false;
             if (cat && p.cat !== cat) return false;
             const pSabor = extrairSabor(p.nome);
-            return sabor === pSabor || sabor.includes(pSabor) || pSabor?.includes(sabor);
+            return sabor === pSabor || sabor.includes(pSabor) || (pSabor && pSabor.includes(sabor));
         });
     };
     
@@ -1516,325 +1623,209 @@ function processarExcel(data) {
         });
     };
     
-    // Detectar tipo de item
-    const isBebidaItem = n => {
-        const nL = n.toLowerCase();
-        return nL.includes('coca') || nL.includes('fanta') || nL.includes('sprite') ||
-               nL.includes('guaraná') || nL.includes('água') || nL.includes('suco') ||
-               nL.includes('monster') || nL.includes('energético') || nL.includes('vinho') ||
-               nL.includes('cerveja') || nL.includes('h2o') || nL.includes('del valle') ||
-               nL.includes('néctar') || nL.includes('refrigerante');
-    };
-    
-    const isSobremesaItem = n => {
-        const nL = n.toLowerCase();
-        return nL.includes('brownie') || nL.includes('cannoli') ||
-               nL.includes('tiramisu') || nL.includes('palha italiana');
-    };
-    
-    const isExtraItem = n => {
-        const nL = n.toLowerCase();
-        return nL.startsWith('extra ') || 
-               nL.includes('pimenta do reino') ||
-               nL.includes('polenta') ||
-               nL.includes('crostini') ||
-               nL.includes('acompanhamento + sobremesa') ||
-               nL.includes('acompanhamento +sobremesa') ||
-               (nL.includes('muçarela') && !nL.includes('nhoque')) ||
-               (nL.includes('mussarela') && !nL.includes('nhoque')) ||
-               (nL.includes('recheado') && nL.includes('nhoque'));
-    };
-    
-    // Agrupadores de bebida (NÃO contar como bebida, são totais)
-    const isAgrupadorBebida = n => {
-        const nL = n.toLowerCase().trim();
-        return nL === 'refrigerante lata 350ml' ||
-               nL === 'refrigerante 600ml' ||
-               nL === 'refrigerante 200ml' ||
-               nL === 'refrigerante 2 litros' ||
-               nL === 'refrigerante sprite lemon fresh' ||
-               nL === 'água' ||
-               nL === 'sucos' ||
-               nL === 'energético' ||
-               nL === 'vinho' ||
-               nL === 'vai uma bebida aí?!' ||
-               nL === 'vai uma bebida';
-    };
-    
-    // Itens a IGNORAR completamente
-    const isIgnorar = n => {
-        const nL = n.toLowerCase();
-        return nL.includes('nhoque tradicional') ||
-               nL.includes('não preciso de talher') || 
-               nL.includes('preciso de talher') ||
-               nL.includes('talharim') || 
-               nL.includes('penne') && !nL.includes('integral') ||
-               nL.includes('caracolino') ||
-               nL.includes('espaguete') ||
-               nL.includes('fettuccine') ||
-               nL.includes('opção vegetariana') ||
-               nL.includes('copo um brinde') ||
-               nL.includes('chaveiro') ||
-               nL.includes('molho de pimenta') ||
-               isAgrupadorBebida(n);
-    };
-    
-    // Detectar tamanho
-    const getTamanho = n => {
-        const nL = n.toLowerCase();
-        if (nL.includes('box kids') || nL.includes('box p') || nL.includes('450g')) return 'P';
-        if (nL.includes('box g') || nL.includes('800g') || nL.includes('750g') || nL.includes('650g')) return 'G';
-        return null;
-    };
-    
-    // Adicionar produto à venda
-    const addProdVenda = (prod, qtd, valor, origem, tam, cat) => {
-        if (!prod || qtd <= 0) return;
+    // === HELPERS PARA ADICIONAR ===
+    const addProd = (prod, qtd, valor, origem, tam, cat, nomeOrig) => {
+        if (!prod) {
+            vendas.naoEncontrados.push({ nome: nomeOrig, tam: tam || 'G', qtd, cat });
+            return;
+        }
         const custo = prod.custoFicha || calcCustoProduto(prod.id) || prod.custo || 0;
-        
-        // Verificar se já existe para evitar duplicata
-        const existe = vendas.produtos.find(p => 
-            p.id === prod.id && p.tamImport === tam && p.origem === origem
-        );
+        const existe = vendas.produtos.find(p => p.id === prod.id && p.tamImport === tam);
         if (existe) {
             existe.qtdVenda += qtd;
             existe.valorVenda += valor;
         } else {
             vendas.produtos.push({ ...prod, custo, qtdVenda: qtd, valorVenda: valor, origem, tamImport: tam });
         }
-        
-        // Atualizar detalhes
+        // Detalhes
         if (cat === 'risoto') {
-            const det = vendas.detalhes.risoto.find(d => d.nome === prod.nome);
-            if (det) det.qtd += qtd; else vendas.detalhes.risoto.push({ nome: prod.nome, qtd });
+            const d = vendas.detalhes.risoto.find(x => x.nome === prod.nome);
+            if (d) d.qtd += qtd; else vendas.detalhes.risoto.push({ nome: prod.nome, qtd });
         } else if (cat === 'nhoque') {
-            const det = vendas.detalhes.nhoque.find(d => d.nome === prod.nome);
-            if (det) det.qtd += qtd; else vendas.detalhes.nhoque.push({ nome: prod.nome, qtd });
+            const d = vendas.detalhes.nhoque.find(x => x.nome === prod.nome);
+            if (d) d.qtd += qtd; else vendas.detalhes.nhoque.push({ nome: prod.nome, qtd });
         } else if (tam === 'P') {
-            const det = vendas.detalhes.macP.find(d => d.nome === prod.nome);
-            if (det) det.qtd += qtd; else vendas.detalhes.macP.push({ nome: prod.nome, qtd });
+            const d = vendas.detalhes.macP.find(x => x.nome === prod.nome);
+            if (d) d.qtd += qtd; else vendas.detalhes.macP.push({ nome: prod.nome, qtd });
         } else {
-            const det = vendas.detalhes.macG.find(d => d.nome === prod.nome);
-            if (det) det.qtd += qtd; else vendas.detalhes.macG.push({ nome: prod.nome, qtd });
+            const d = vendas.detalhes.macG.find(x => x.nome === prod.nome);
+            if (d) d.qtd += qtd; else vendas.detalhes.macG.push({ nome: prod.nome, qtd });
         }
     };
     
-    let secaoAtual = null;
-    let isBoiadeirinha = false;
+    const addBebida = (nome, qtd, valor) => {
+        const beb = findBebida(nome);
+        if (beb) {
+            const ex = vendas.bebidas.find(b => b.id === beb.id);
+            if (ex) { ex.qtdVenda += qtd; ex.valorVenda += valor; }
+            else vendas.bebidas.push({ ...beb, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+        } else {
+            const ex = vendas.bebidas.find(b => b.nome === nome);
+            if (ex) { ex.qtdVenda += qtd; ex.valorVenda += valor; }
+            else vendas.bebidas.push({ id: 0, nome, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+        }
+    };
     
-    // Processar todas as linhas
+    const addSobremesa = (nome, qtd, valor) => {
+        const sob = findSobremesa(nome);
+        if (sob) {
+            const ex = vendas.sobremesas.find(s => s.id === sob.id);
+            if (ex) { ex.qtdVenda += qtd; ex.valorVenda += valor; }
+            else vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+        } else {
+            const ex = vendas.sobremesas.find(s => s.nome === nome);
+            if (ex) { ex.qtdVenda += qtd; ex.valorVenda += valor; }
+            else vendas.sobremesas.push({ id: 0, nome, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+        }
+    };
+    
+    const addExtra = (nome, qtd, valor) => {
+        const ext = findExtra(nome);
+        if (ext) {
+            const ex = vendas.extras.find(e => e.id === ext.id);
+            if (ex) { ex.qtdVenda += qtd; ex.valorVenda += valor; }
+            else vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+        } else {
+            const ex = vendas.extras.find(e => e.nome === nome);
+            if (ex) { ex.qtdVenda += qtd; ex.valorVenda += valor; }
+            else vendas.extras.push({ id: 0, nome, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
+        }
+    };
+    
+    // === LOOP PRINCIPAL ===
+    let contexto = null; // { tipo: 'produto_direto'|'agrupador'|'combo', valor, nome }
+    
     for (let i = 5; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[0]) continue;
         
-        const nome = String(row[0]).trim();
+        const nomeRaw = String(row[0]);
+        const nome = nomeRaw.trim();
         const qtd = parseInt(row[1]) || 0;
         const valor = parseFloat(row[2]) || 0;
         
         if (!nome || nome === 'nan') continue;
+        if (nome.includes('Data Inicial') || nome.includes('Itens e Opções')) continue;
         
-        const nomeL = nome.toLowerCase();
-        const isSubItem = nome.startsWith('-') || nome.startsWith(' -');
+        const isSubItem = nomeRaw.startsWith('-') || nomeRaw.startsWith(' -') || nome.startsWith('-');
         const nomeLimpo = nome.replace(/^[-\s]+/, '').trim();
-        const nomeLimpoL = nomeLimpo.toLowerCase();
         
-        // === LINHA SEM HÍFEN (Categoria) ===
+        // === CATEGORIA PRINCIPAL (sem hífen) ===
         if (!isSubItem) {
-            // Acumular faturamento da categoria
+            // Acumular faturamento
             if (valor > 0) vendas.totalFat += valor;
             
-            // Detectar seção
-            isBoiadeirinha = nomeL.includes('boiadeirinha');
-            
-            if (nomeL.includes('bebida') || nomeL.includes('refrigerante') || 
-                nomeL.includes('água') || nomeL.includes('suco') || 
-                nomeL.includes('energético') || nomeL.includes('vinho')) {
-                secaoAtual = 'bebidas';
-            } else if (nomeL.includes('docinho') || nomeL.includes('tiramisu') || 
-                       nomeL.includes('cannoli') || nomeL.includes('brownie') || 
-                       nomeL.includes('palha italiana')) {
-                secaoAtual = 'sobremesas';
-                // Sobremesa como categoria = produto direto
-                if (qtd > 0 && isSobremesaItem(nome)) {
-                    const sob = findSobremesa(nome);
-                    if (sob) vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
-                    else vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
-                }
-            } else if (nomeL.includes('entradas') || nomeL.includes('acompanhamento') || 
-                       nomeL.includes('molhinho') || nomeL.includes('crostini')) {
-                secaoAtual = 'extras';
-                // Crostini como categoria = produto direto
-                if (qtd > 0 && nomeL.includes('crostini')) {
-                    const ext = findExtra(nome);
-                    if (ext) vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
-                    else vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nome });
-                }
-            } else if (nomeL.includes('risoto') && !nomeL.includes('combo')) {
-                secaoAtual = 'risoto';
-                // RISOTO: A categoria É o produto!
-                if (qtd > 0 && extrairSabor(nome)) {
+            // 1. É PRODUTO DIRETO?
+            const prodDireto = catEhProdutoDireto(nome);
+            if (prodDireto && qtd > 0) {
+                contexto = { tipo: 'produto_direto', valor: prodDireto, nome };
+                
+                if (prodDireto === 'macarrao_g') {
+                    const prod = findProd(nome, 'G', 'macarrao');
+                    addProd(prod, qtd, valor, 'Macarrão G', 'G', 'macarrao', nome);
+                } else if (prodDireto === 'risoto') {
                     const prod = findProd(nome, 'G', 'risoto');
-                    if (prod) addProdVenda(prod, qtd, valor, 'Risoto', 'G', 'risoto');
-                    else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'risoto' });
-                }
-            } else if (nomeL.includes('nhoque') && !nomeL.includes('combo')) {
-                secaoAtual = 'nhoque';
-                // NHOQUE: A categoria É o produto!
-                if (qtd > 0 && extrairSabor(nome)) {
+                    addProd(prod, qtd, valor, 'Risoto', 'G', 'risoto', nome);
+                } else if (prodDireto === 'nhoque') {
                     const prod = findProd(nome, 'G', 'nhoque');
-                    if (prod) addProdVenda(prod, qtd, valor, 'Nhoque', 'G', 'nhoque');
-                    else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'nhoque' });
+                    addProd(prod, qtd, valor, 'Nhoque', 'G', 'nhoque', nome);
+                } else if (prodDireto === 'sobremesa') {
+                    addSobremesa(nome, qtd, valor);
+                } else if (prodDireto === 'extra') {
+                    addExtra(nome, qtd, valor);
+                } else if (prodDireto === 'salada') {
+                    addExtra(nome, qtd, valor); // Salada vai pra extras
                 }
-            } else if (nomeL.includes('macarrão') && !nomeL.includes('combo') && !nomeL.includes('salada')) {
-                // MACARRÃO Box G como categoria (não Box P)
-                if (nomeL.includes('800g') || nomeL.includes('750g')) {
-                    secaoAtual = 'macarrao_g';
-                    // Categoria com gramatura É o produto Box G
-                    if (qtd > 0 && extrairSabor(nome)) {
-                        const prod = findProd(nome, 'G', 'macarrao');
-                        if (prod) addProdVenda(prod, qtd, valor, 'Macarrão G', 'G', 'macarrao');
-                        else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'macarrao' });
-                    }
-                } else {
-                    secaoAtual = 'macarrao';
-                    // NÃO processar categoria de macarrão sem gramatura como produto
-                }
-            } else if (nomeL.includes('combo') || nomeL.includes('diversos') || 
-                       nomeL.includes('especial de almoço') || nomeL.includes('compre')) {
-                secaoAtual = 'combos';
-            } else if (nomeL.includes('salada')) {
-                secaoAtual = 'salada';
+                continue;
             }
+            
+            // 2. É AGRUPADOR?
+            const agrup = catEhAgrupador(nome);
+            if (agrup) {
+                contexto = { tipo: 'agrupador', valor: agrup, nome };
+                continue;
+            }
+            
+            // 3. É COMBO?
+            const combo = catEhCombo(nome);
+            if (combo) {
+                contexto = { tipo: 'combo', valor: combo, nome };
+                continue;
+            }
+            
+            // Sem contexto
+            contexto = null;
             continue;
         }
         
-        // === LINHA COM HÍFEN (Sub-item) ===
+        // === SUB-ITEM (com hífen) ===
         if (qtd <= 0) continue;
-        
-        // 1. IGNORAR itens específicos
         if (isIgnorar(nomeLimpo)) continue;
         
-        // 2. EXTRAS (Extra X, Muçarela de Nhoque, Polenta, Crostini, etc.)
+        // EXTRAS sempre vão para extras (independente do contexto)
         if (isExtraItem(nomeLimpo)) {
-            const ext = findExtra(nomeLimpo);
-            if (ext) {
-                const existe = vendas.extras.find(e => e.id === ext.id);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            } else {
-                const existe = vendas.extras.find(e => e.nome === nomeLimpo);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            }
+            addExtra(nomeLimpo, qtd, valor);
             continue;
         }
         
-        // 3. SOBREMESAS
+        // SOBREMESAS sempre vão para sobremesas
         if (isSobremesaItem(nomeLimpo)) {
-            const sob = findSobremesa(nomeLimpo);
-            if (sob) {
-                const existe = vendas.sobremesas.find(s => s.id === sob.id);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            } else {
-                const existe = vendas.sobremesas.find(s => s.nome === nomeLimpo);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            }
+            addSobremesa(nomeLimpo, qtd, valor);
             continue;
         }
         
-        // 4. BEBIDAS (em qualquer seção) - ignorar agrupadores
-        if (isBebidaItem(nomeLimpo) && !isAgrupadorBebida(nomeLimpo)) {
-            const beb = findBebida(nomeLimpo);
-            if (beb) {
-                const existe = vendas.bebidas.find(b => b.id === beb.id);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.bebidas.push({ ...beb, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            } else {
-                const existe = vendas.bebidas.find(b => norm(b.nome) === norm(nomeLimpo));
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.bebidas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            }
-            continue;
-        }
+        // Sem contexto, ignorar
+        if (!contexto) continue;
         
-        // 5. BEBIDAS (seção bebidas) - ignorar agrupadores
-        if (secaoAtual === 'bebidas' && !isAgrupadorBebida(nomeLimpo)) {
-            const beb = findBebida(nomeLimpo);
-            if (beb) {
-                const existe = vendas.bebidas.find(b => b.id === beb.id);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.bebidas.push({ ...beb, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            } else if (valor > 0 || qtd > 0) {
-                const existe = vendas.bebidas.find(b => norm(b.nome) === norm(nomeLimpo));
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.bebidas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            }
-            continue;
-        }
+        // === LÓGICA POR CONTEXTO ===
+        const { tipo, valor: ctxVal } = contexto;
         
-        // 6. SOBREMESAS (seção sobremesas)
-        if (secaoAtual === 'sobremesas') {
-            const sob = findSobremesa(nomeLimpo);
-            if (sob) {
-                const existe = vendas.sobremesas.find(s => s.id === sob.id);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.sobremesas.push({ ...sob, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            } else if (valor > 0) {
-                vendas.sobremesas.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+        if (tipo === 'agrupador') {
+            if (ctxVal === 'bebidas' && isBebidaItem(nomeLimpo)) {
+                addBebida(nomeLimpo, qtd, valor);
+            } else if (ctxVal === 'macarrao') {
+                // Box P ou Box G dentro de "Macarrão Bolonhesa", etc
+                const tam = getTamanho(nomeLimpo);
+                if (tam) {
+                    const prod = findProd(nomeLimpo, tam, 'macarrao');
+                    addProd(prod, qtd, valor, 'Macarrão', tam, 'macarrao', nomeLimpo);
+                }
             }
-            continue;
         }
-        
-        // 7. EXTRAS (seção extras)
-        if (secaoAtual === 'extras') {
-            const ext = findExtra(nomeLimpo);
-            if (ext) {
-                const existe = vendas.extras.find(e => e.id === ext.id);
-                if (existe) { existe.qtdVenda += qtd; existe.valorVenda += valor; }
-                else vendas.extras.push({ ...ext, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
-            } else if (valor > 0) {
-                vendas.extras.push({ id: 0, nome: nomeLimpo, custo: 0, qtdVenda: qtd, valorVenda: valor, nomeOriginal: nomeLimpo });
+        else if (tipo === 'combo') {
+            // Bebidas em combos vão pra bebidas
+            if (isBebidaItem(nomeLimpo)) {
+                addBebida(nomeLimpo, qtd, valor);
+                continue;
             }
-            continue;
-        }
-        
-        // 8. MACARRÃO - Sub-item COM sabor E tamanho
-        if (secaoAtual === 'macarrao' || secaoAtual === 'macarrao_g') {
-            const sabor = extrairSabor(nomeLimpo);
-            const tam = getTamanho(nomeLimpo);
             
-            if (sabor && tam) {
-                const prod = findProd(nomeLimpo, tam, 'macarrao');
-                if (prod) addProdVenda(prod, qtd, valor, 'Macarrão', tam, 'macarrao');
-                else vendas.naoEncontrados.push({ nome: nomeLimpo, tam, qtd, cat: 'macarrao' });
-            }
-            continue;
-        }
-        
-        // 9. RISOTO em combos
-        if (secaoAtual === 'combos' && nomeLimpoL.includes('risoto')) {
-            const prod = findProd(nomeLimpo, 'G', 'risoto');
-            if (prod) addProdVenda(prod, qtd, valor, 'Combo Risoto', 'G', 'risoto');
-            else vendas.naoEncontrados.push({ nome: nomeLimpo, tam: 'G', qtd, cat: 'risoto' });
-            continue;
-        }
-        
-        // 10. COMBOS - Sub-itens COM sabor E tamanho (Box G ou Box Kids)
-        if (secaoAtual === 'combos') {
-            const sabor = extrairSabor(nomeLimpo);
-            let tam = getTamanho(nomeLimpo);
+            const nL = nomeLimpo.toLowerCase();
             
-            // Boiadeirinha = Box Kids = P
-            if (isBoiadeirinha && nomeLimpoL.includes('box kids')) tam = 'P';
-            
-            if (sabor && tam) {
-                const prod = findProd(nomeLimpo, tam, 'macarrao');
-                if (prod) addProdVenda(prod, qtd, valor, 'Combo', tam, 'macarrao');
-                else vendas.naoEncontrados.push({ nome: nomeLimpo, tam, qtd, cat: 'macarrao' });
+            if (ctxVal === 'combo_risoto') {
+                if (nL.includes('risoto')) {
+                    const prod = findProd(nomeLimpo, 'G', 'risoto');
+                    addProd(prod, qtd, valor, 'Combo Risoto', 'G', 'risoto', nomeLimpo);
+                }
             }
-            continue;
+            else if (ctxVal === 'combo_p') {
+                // Boiadeirinha: tudo é Box P
+                if (extrairSabor(nomeLimpo) || nL.includes('box kids') || nL.includes('box p')) {
+                    const prod = findProd(nomeLimpo, 'P', 'macarrao');
+                    addProd(prod, qtd, valor, 'Combo Boiadeirinha', 'P', 'macarrao', nomeLimpo);
+                }
+            }
+            else if (ctxVal === 'combo_g') {
+                // Grande/Casal/Compre 3 leve 4: Box G ou Nhoque
+                if (nL.includes('nhoque') && !nL.includes('recheado')) {
+                    // Nhoque - é nhoque
+                    const prod = findProd(nomeLimpo, 'G', 'nhoque');
+                    addProd(prod, qtd, valor, 'Combo', 'G', 'nhoque', nomeLimpo);
+                } else if (nL.includes('box g') || extrairSabor(nomeLimpo)) {
+                    // Sabor (Box G) = macarrão G
+                    const prod = findProd(nomeLimpo, 'G', 'macarrao');
+                    addProd(prod, qtd, valor, 'Combo', 'G', 'macarrao', nomeLimpo);
+                }
+            }
         }
     }
     
@@ -1921,7 +1912,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 
 
 // Init - verificar sessão existente imediatamente
-console.log('🚀 CMV Control v10.3.0 - inicializando...');
+console.log('🚀 CMV Control v11.0.0 - inicializando...');
 (async () => {
     try {
         const t0 = Date.now();
