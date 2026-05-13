@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.3.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.4.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -516,8 +516,13 @@ async function showApp(user) {
     $('app-screen').classList.add('visible');
     $('user-email').textContent = user.email;
     
-    // Só recarregar se mudou de usuário ou nunca carregou
-    if (lastUserId !== user.id && !isLoading) {
+    // Carrega apenas se: usuário diferente OU nunca carregou ainda
+    const dadosCarregados = DB.produtos && DB.produtos.length > 0;
+    if (isLoading) {
+        console.log('showApp: já está carregando, ignorando');
+        return;
+    }
+    if (lastUserId !== user.id || !dadosCarregados) {
         lastUserId = user.id;
         isLoading = true;
         try {
@@ -525,6 +530,9 @@ async function showApp(user) {
         } finally {
             isLoading = false;
         }
+    } else {
+        console.log('showApp: dados já carregados, renderizando');
+        renderAll();
     }
 }
 
@@ -537,9 +545,9 @@ function showLogin() {
 }
 
 sb.auth.onAuthStateChange(async (event, session) => {
-    console.log('Auth event:', event, session?.user?.email);
+    console.log('Auth event:', event, session?.user?.email || '(sem usuário)');
     
-    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+    if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         if (session?.user) {
             await showApp(session.user);
         } else {
@@ -547,6 +555,12 @@ sb.auth.onAuthStateChange(async (event, session) => {
         }
     } else if (event === 'SIGNED_OUT') {
         showLogin();
+    } else if (event === 'TOKEN_REFRESHED') {
+        // Token renovado - só atualizar currentUser, NÃO recarregar dados
+        if (session?.user) {
+            currentUser = session.user;
+            console.log('Token renovado para:', session.user.email);
+        }
     }
 });
 
@@ -585,34 +599,61 @@ async function fetchWithTimeout(promise, ms = 10000) {
     return Promise.race([promise, timeout]);
 }
 
-// Helper: query com timeout INDIVIDUAL (se travar, segue com vazio)
-function queryWithTimeout(promise, ms = 8000, label = '') {
-    return new Promise((resolve) => {
-        let done = false;
-        const timer = setTimeout(() => {
-            if (!done) {
-                done = true;
-                console.warn(`⏱️ Timeout ${label} após ${ms}ms`);
-                resolve({ data: null, error: { message: 'timeout' } });
+// Helper: query com timeout E retry automático
+function queryWithTimeout(makeQuery, ms = 20000, label = '', retries = 1) {
+    return new Promise(async (resolve) => {
+        for (let tentativa = 0; tentativa <= retries; tentativa++) {
+            const t0 = Date.now();
+            const result = await new Promise((resolveInner) => {
+                let done = false;
+                const timer = setTimeout(() => {
+                    if (!done) {
+                        done = true;
+                        console.warn(`⏱️ Timeout ${label} após ${ms}ms (tentativa ${tentativa + 1})`);
+                        resolveInner({ data: null, error: { message: 'timeout' } });
+                    }
+                }, ms);
+                try {
+                    makeQuery().then(r => {
+                        if (!done) {
+                            done = true;
+                            clearTimeout(timer);
+                            const dt = Date.now() - t0;
+                            if (dt > 3000) console.log(`🐢 ${label}: ${dt}ms`);
+                            resolveInner(r);
+                        }
+                    }).catch(e => {
+                        if (!done) { done = true; clearTimeout(timer); resolveInner({ data: null, error: e }); }
+                    });
+                } catch(e) {
+                    if (!done) { done = true; clearTimeout(timer); resolveInner({ data: null, error: e }); }
+                }
+            });
+            
+            // Se sucesso ou erro que não é timeout, retorna
+            if (result.data !== null || (result.error && result.error.message !== 'timeout')) {
+                return resolve(result);
             }
-        }, ms);
-        promise.then(r => {
-            if (!done) { done = true; clearTimeout(timer); resolve(r); }
-        }).catch(e => {
-            if (!done) { done = true; clearTimeout(timer); resolve({ data: null, error: e }); }
-        });
+            // Senão, tenta de novo (próxima iteração do for)
+            if (tentativa < retries) {
+                console.log(`🔄 Retentando ${label}...`);
+            }
+        }
+        // Todas as tentativas falharam
+        resolve({ data: null, error: { message: 'timeout' } });
     });
 }
 
-// Cache em sessionStorage para acelerar visitas seguintes
+// Cache em sessionStorage - SOMENTE salva se dados realmente carregaram
 function loadFromCache(userId) {
     try {
         const k = `cmv-cache-${userId}`;
         const raw = sessionStorage.getItem(k);
         if (!raw) return null;
         const c = JSON.parse(raw);
-        // Cache válido por 5 minutos
         if (Date.now() - c.t > 5 * 60 * 1000) return null;
+        // Validar que o cache tem dados úteis (não está vazio)
+        if (!c.d || !c.d.produtos) return null;
         return c.d;
     } catch(e) { return null; }
 }
@@ -623,7 +664,13 @@ function saveToCache(userId, data) {
     } catch(e) {}
 }
 
-async function loadAll() {
+function limparCache(userId) {
+    try {
+        sessionStorage.removeItem(`cmv-cache-${userId}`);
+    } catch(e) {}
+}
+
+async function loadAll(forceRefresh = false) {
     const startTime = Date.now();
     console.log('🚀 loadAll: início');
     
@@ -633,37 +680,46 @@ async function loadAll() {
         return;
     }
     
-    // 1. CARREGAR DO CACHE PRIMEIRO (instantâneo)
-    const cached = loadFromCache(currentUser.id);
-    if (cached) {
-        console.log('⚡ Carregando do cache (instantâneo)');
-        perfil = cached.perfil || { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
-        DB.produtos = cached.produtos || [];
-        DB.bebidas = cached.bebidas || [];
-        DB.sobremesas = cached.sobremesas || [];
-        DB.extras = cached.extras || [];
-        DB.ingredientes = cached.ingredientes || [];
-        DB.fichas = cached.fichas || [];
-        DB.vendas = cached.vendas || [];
-        DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
-        carregarTaxas();
-        renderAll();
-        loading(false);
-    } else {
+    // 1. CARREGAR DO CACHE PRIMEIRO (se válido e não forçar refresh)
+    let usouCache = false;
+    if (!forceRefresh) {
+        const cached = loadFromCache(currentUser.id);
+        if (cached && cached.produtos && cached.produtos.length > 0) {
+            console.log('⚡ Carregando do cache (instantâneo)');
+            perfil = cached.perfil || { taxa_ifood: 10, taxa_anota: 0, royalties: 0, imposto: 0 };
+            DB.produtos = cached.produtos || [];
+            DB.bebidas = cached.bebidas || [];
+            DB.sobremesas = cached.sobremesas || [];
+            DB.extras = cached.extras || [];
+            DB.ingredientes = cached.ingredientes || [];
+            DB.fichas = cached.fichas || [];
+            DB.vendas = cached.vendas || [];
+            DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
+            carregarTaxas();
+            renderAll();
+            loading(false);
+            usouCache = true;
+        }
+    }
+    
+    if (!usouCache) {
         loading(true, 'Carregando seus dados...');
     }
     
-    // 2. BUSCAR DADOS FRESCOS DO SUPABASE (em paralelo, com timeout)
+    // 2. BUSCAR DADOS FRESCOS — timeout 20s + retry automático
     try {
+        // Função que retorna uma promise NOVA cada vez (permite retry)
+        const mk = (fn) => () => fn();
+        
         const queries = [
-            queryWithTimeout(sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle(), 8000, 'perfis'),
-            queryWithTimeout(sb.from('produtos').select('*').order('nome'), 8000, 'produtos'),
-            queryWithTimeout(sb.from('bebidas').select('*').order('nome'), 8000, 'bebidas'),
-            queryWithTimeout(sb.from('sobremesas').select('*').order('nome'), 8000, 'sobremesas'),
-            queryWithTimeout(sb.from('extras').select('*').order('nome'), 8000, 'extras'),
-            queryWithTimeout(sb.from('ingredientes').select('*').order('nome'), 8000, 'ingredientes'),
-            queryWithTimeout(sb.from('fichas').select('*'), 8000, 'fichas'),
-            queryWithTimeout(sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').order('created_at', { ascending: false }), 8000, 'vendas')
+            queryWithTimeout(mk(() => sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle()), 20000, 'perfis', 1),
+            queryWithTimeout(mk(() => sb.from('produtos').select('*').order('nome')), 20000, 'produtos', 1),
+            queryWithTimeout(mk(() => sb.from('bebidas').select('*').order('nome')), 20000, 'bebidas', 1),
+            queryWithTimeout(mk(() => sb.from('sobremesas').select('*').order('nome')), 20000, 'sobremesas', 1),
+            queryWithTimeout(mk(() => sb.from('extras').select('*').order('nome')), 20000, 'extras', 1),
+            queryWithTimeout(mk(() => sb.from('ingredientes').select('*').order('nome')), 20000, 'ingredientes', 1),
+            queryWithTimeout(mk(() => sb.from('fichas').select('*')), 20000, 'fichas', 1),
+            queryWithTimeout(mk(() => sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').order('created_at', { ascending: false })), 20000, 'vendas', 1)
         ];
         
         const [perfilRes, produtosRes, bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes] = await Promise.all(queries);
@@ -674,8 +730,8 @@ async function loadAll() {
         // Processar perfil (auto-criar se não existir)
         if (perfilRes.data) {
             perfil = perfilRes.data;
-        } else if (!perfilRes.error || perfilRes.error.message !== 'timeout') {
-            // Tentar criar perfil
+        } else if (perfilRes.error && perfilRes.error.message !== 'timeout') {
+            // Perfil não existe e a query NÃO deu timeout: criar
             console.log('Criando perfil...');
             try {
                 const { data: novoPerfil } = await sb.from('perfis').insert({
@@ -690,24 +746,25 @@ async function loadAll() {
             }
         }
         
-        // Atribuir dados (só se a query retornou - mantém cache se falhou)
-        if (produtosRes.data) DB.produtos = produtosRes.data;
-        if (bebidasRes.data) DB.bebidas = bebidasRes.data;
-        if (sobremesasRes.data) DB.sobremesas = sobremesasRes.data;
-        if (extrasRes.data) DB.extras = extrasRes.data;
-        if (ingredientesRes.data) DB.ingredientes = ingredientesRes.data;
-        if (fichasRes.data) DB.fichas = fichasRes.data;
-        if (vendasRes.data) DB.vendas = vendasRes.data;
+        // Contar quantas queries deram timeout
+        const responses = { perfil: perfilRes, produtos: produtosRes, bebidas: bebidasRes,
+            sobremesas: sobremesasRes, extras: extrasRes, ingredientes: ingredientesRes,
+            fichas: fichasRes, vendas: vendasRes };
+        const timeouts = Object.entries(responses)
+            .filter(([k, r]) => r.error?.message === 'timeout')
+            .map(([k]) => k);
+        
+        // Atribuir dados APENAS se a query retornou (sem timeout)
+        if (produtosRes.data !== null) DB.produtos = produtosRes.data || [];
+        if (bebidasRes.data !== null) DB.bebidas = bebidasRes.data || [];
+        if (sobremesasRes.data !== null) DB.sobremesas = sobremesasRes.data || [];
+        if (extrasRes.data !== null) DB.extras = extrasRes.data || [];
+        if (ingredientesRes.data !== null) DB.ingredientes = ingredientesRes.data || [];
+        if (fichasRes.data !== null) DB.fichas = fichasRes.data || [];
+        if (vendasRes.data !== null) DB.vendas = vendasRes.data || [];
         
         // Calcular custos
         DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
-        
-        // Salvar no cache para próxima visita
-        saveToCache(currentUser.id, {
-            perfil, produtos: DB.produtos, bebidas: DB.bebidas,
-            sobremesas: DB.sobremesas, extras: DB.extras,
-            ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas
-        });
         
         carregarTaxas();
         renderAll();
@@ -715,21 +772,58 @@ async function loadAll() {
         const totalTime = Date.now() - startTime;
         console.log(`✓ loadAll: TOTAL ${totalTime}ms`, {
             produtos: DB.produtos.length, bebidas: DB.bebidas.length,
+            sobremesas: DB.sobremesas.length, extras: DB.extras.length,
             ingredientes: DB.ingredientes.length, fichas: DB.fichas.length,
             vendas: DB.vendas.length
         });
         
-        // Avisar se houve timeouts
-        const timeouts = [perfilRes, produtosRes, bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes]
-            .filter(r => r.error?.message === 'timeout').length;
-        if (timeouts > 0) {
-            toast(`${timeouts} consulta(s) lenta(s). Recarregue se faltar dado.`, true);
+        // SÓ salva cache se NÃO houve timeout em produtos (dado crítico)
+        if (timeouts.length === 0) {
+            saveToCache(currentUser.id, {
+                perfil, produtos: DB.produtos, bebidas: DB.bebidas,
+                sobremesas: DB.sobremesas, extras: DB.extras,
+                ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas
+            });
+            console.log('✓ Cache salvo');
+        } else {
+            // Limpar cache ruim se existir
+            limparCache(currentUser.id);
+            console.warn(`⚠️ ${timeouts.length} timeout(s): ${timeouts.join(', ')} - cache NÃO salvo`);
+            
+            // Mostrar botão de recarregar
+            mostrarBotaoRecarregar(timeouts);
         }
     } catch (e) {
         console.error('loadAll ERRO:', e);
+        toast('Erro ao carregar dados', true);
+        mostrarBotaoRecarregar(['erro']);
     } finally {
         loading(false);
     }
+}
+
+// Mostrar aviso com botão de recarregar quando há timeouts
+function mostrarBotaoRecarregar(timeouts) {
+    // Remove aviso anterior se existir
+    const existente = document.getElementById('aviso-recarregar');
+    if (existente) existente.remove();
+    
+    const div = document.createElement('div');
+    div.id = 'aviso-recarregar';
+    div.style.cssText = 'position:fixed;top:1rem;right:1rem;background:#dc2626;color:white;padding:1rem 1.5rem;border-radius:8px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.3);max-width:320px;font-size:0.9rem;';
+    div.innerHTML = `
+        <div style="font-weight:bold;margin-bottom:0.5rem;">⚠️ Conexão lenta</div>
+        <div style="margin-bottom:0.75rem;font-size:0.8rem;">Alguns dados não carregaram: ${timeouts.join(', ')}</div>
+        <button onclick="recarregarDados()" style="background:white;color:#dc2626;border:none;padding:0.4rem 0.9rem;border-radius:6px;font-weight:bold;cursor:pointer;width:100%;">🔄 Tentar novamente</button>
+    `;
+    document.body.appendChild(div);
+}
+
+// Função para recarregar dados manualmente (sem cache)
+async function recarregarDados() {
+    const aviso = document.getElementById('aviso-recarregar');
+    if (aviso) aviso.remove();
+    await loadAll(true); // force refresh
 }
 
 // ========================================
@@ -2027,30 +2121,28 @@ loading(false);}
 function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileInput.value='';$('upload-file').textContent='';uploadBox.classList.remove('has-file');}
 
 
-// Init - verificar sessão existente imediatamente
-console.log('🚀 CMV Control v12.3.0 - inicializando...');
-(async () => {
-    try {
-        const t0 = Date.now();
-        const { data: { session }, error } = await sb.auth.getSession();
-        console.log(`⚡ getSession em ${Date.now() - t0}ms`);
-        if (error) {
-            console.error('Erro getSession:', error);
+// Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
+// Apenas marcamos o início para debug.
+console.log('🚀 CMV Control v12.4.0 - inicializando...');
+
+// Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
+setTimeout(async () => {
+    if (!currentUser && !isLoading) {
+        console.log('⏰ Fallback: INITIAL_SESSION não disparou, verificando manualmente...');
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            if (session?.user) {
+                console.log('Sessão encontrada via fallback');
+                await showApp(session.user);
+            } else {
+                showLogin();
+            }
+        } catch(e) {
+            console.error('Fallback erro:', e);
             showLogin();
-            return;
         }
-        if (session?.user) {
-            console.log('✓ Sessão encontrada:', session.user.email);
-            await showApp(session.user);
-        } else {
-            console.log('Sem sessão, mostrando login');
-            showLogin();
-        }
-    } catch(e) {
-        console.error('Erro init:', e);
-        showLogin();
     }
-})();
+}, 5000);
 </script>
 </body>
 </html>
