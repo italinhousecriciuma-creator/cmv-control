@@ -224,6 +224,8 @@ td{font-size:0.9rem;}
         
         <div class="auth-forgot" id="forgot-link">
             <a href="#" onclick="handleForgotPassword(event)">Esqueci minha senha</a>
+            <span style="opacity:0.4;margin:0 0.5rem;">•</span>
+            <a href="#" onclick="handleReenviarEmail(event)">Reenviar email de confirmação</a>
         </div>
     </div>
 </div>
@@ -233,7 +235,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.5.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.7.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -438,48 +440,144 @@ function showAuthError(msg) {
     $('auth-error').style.display = 'block';
 }
 
+// Traduz mensagens de erro do Supabase para português
+function traduzirErroAuth(error) {
+    if (!error) return 'Erro desconhecido';
+    const msg = (error.message || '').toLowerCase();
+    
+    if (msg.includes('invalid login credentials')) {
+        return 'Email ou senha incorretos. Se acabou de criar a conta, confirme seu email primeiro (verifique sua caixa de entrada).';
+    }
+    if (msg.includes('email not confirmed')) {
+        return '⚠️ Confirme seu email primeiro! Verifique sua caixa de entrada (e a pasta de spam).';
+    }
+    if (msg.includes('user already registered')) {
+        return 'Esse email já tem uma conta. Tente fazer login ou recupere a senha.';
+    }
+    if (msg.includes('password should be at least')) {
+        return 'A senha deve ter no mínimo 6 caracteres.';
+    }
+    if (msg.includes('unable to validate email')) {
+        return 'Email inválido. Verifique o formato.';
+    }
+    if (msg.includes('email rate limit exceeded')) {
+        return 'Muitas tentativas. Espere alguns minutos e tente novamente.';
+    }
+    if (msg.includes('signup is disabled')) {
+        return 'Cadastros desativados no momento.';
+    }
+    if (msg.includes('network')) {
+        return 'Erro de conexão. Verifique sua internet.';
+    }
+    return error.message || 'Erro desconhecido';
+}
+
+// Mostrar mensagem informativa (verde/azul, não vermelha)
+function showAuthInfo(msg) {
+    const el = $('auth-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.background = 'rgba(34, 197, 94, 0.15)';
+    el.style.borderColor = '#22c55e';
+    el.style.color = '#86efac';
+}
+
+// Reset do estilo do auth-error quando mostrar erro
+function showAuthErrorReset(msg) {
+    const el = $('auth-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.background = '';
+    el.style.borderColor = '';
+    el.style.color = '';
+}
+
 async function handleLogin(e) {
     e.preventDefault();
-    const email = $('login-email').value;
+    const email = $('login-email').value.trim();
     const password = $('login-password').value;
     $('login-btn').disabled = true;
     $('login-btn').textContent = 'Entrando...';
     
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
-    
-    $('login-btn').disabled = false;
-    $('login-btn').textContent = 'Entrar';
-    
-    if (error) {
-        showAuthError(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message);
+    try {
+        const { data, error } = await sb.auth.signInWithPassword({ email, password });
+        
+        if (error) {
+            showAuthErrorReset(traduzirErroAuth(error));
+        }
+    } catch(e) {
+        showAuthErrorReset('Erro de conexão. Tente novamente.');
+    } finally {
+        $('login-btn').disabled = false;
+        $('login-btn').textContent = 'Entrar';
     }
 }
 
 async function handleSignup(e) {
     e.preventDefault();
-    const restaurante = $('signup-restaurante').value;
-    const email = $('signup-email').value;
+    const restaurante = $('signup-restaurante').value.trim();
+    const email = $('signup-email').value.trim();
     const password = $('signup-password').value;
+    
+    // Validações antes de enviar
+    if (!restaurante) {
+        showAuthErrorReset('Informe o nome do restaurante.');
+        return;
+    }
+    if (!email.includes('@')) {
+        showAuthErrorReset('Email inválido.');
+        return;
+    }
+    if (password.length < 6) {
+        showAuthErrorReset('A senha deve ter no mínimo 6 caracteres.');
+        return;
+    }
+    
     $('signup-btn').disabled = true;
     $('signup-btn').textContent = 'Criando...';
     
-    const { data, error } = await sb.auth.signUp({ 
-        email, 
-        password,
-        options: { data: { restaurante_nome: restaurante } }
-    });
-    
-    $('signup-btn').disabled = false;
-    $('signup-btn').textContent = 'Criar Conta';
-    
-    if (error) {
-        showAuthError(error.message);
-    } else if (data.user) {
-        // Atualizar nome do restaurante no perfil
-        setTimeout(async () => {
-            await sb.from('perfis').update({ restaurante_nome: restaurante }).eq('user_id', data.user.id);
-        }, 1000);
-        toast('Conta criada com sucesso!');
+    try {
+        const { data, error } = await sb.auth.signUp({ 
+            email, 
+            password,
+            options: { data: { restaurante_nome: restaurante } }
+        });
+        
+        if (error) {
+            showAuthErrorReset(traduzirErroAuth(error));
+        } else if (data.user) {
+            // Atualizar nome do restaurante no perfil
+            setTimeout(async () => {
+                try {
+                    await sb.from('perfis').update({ restaurante_nome: restaurante }).eq('user_id', data.user.id);
+                } catch(e) {}
+            }, 1500);
+            
+            // Verificar se precisa confirmar email
+            if (data.user.identities && data.user.identities.length === 0) {
+                showAuthErrorReset('Esse email já está cadastrado. Tente fazer login.');
+            } else if (data.session) {
+                // Já logou automaticamente (confirmação de email desativada)
+                toast('Conta criada com sucesso!');
+            } else {
+                // Precisa confirmar email - mostra mensagem verde informativa
+                showAuthInfo('✅ Conta criada! Verifique seu email para confirmar (olhe na pasta de spam também) e depois faça login.');
+                // Limpar formulário de signup
+                $('signup-restaurante').value = '';
+                $('signup-email').value = '';
+                $('signup-password').value = '';
+                // Pré-preencher login
+                setTimeout(() => {
+                    showAuthTab('login');
+                    $('login-email').value = email;
+                }, 100);
+            }
+        }
+    } catch(e) {
+        showAuthErrorReset('Erro ao criar conta. Tente novamente.');
+    } finally {
+        $('signup-btn').disabled = false;
+        $('signup-btn').textContent = 'Criar Conta';
     }
 }
 
@@ -490,9 +588,29 @@ async function handleForgotPassword(e) {
     
     const { error } = await sb.auth.resetPasswordForEmail(email);
     if (error) {
-        toast(error.message, true);
+        toast(traduzirErroAuth(error), true);
     } else {
-        toast('Email de recuperação enviado!');
+        toast('Email de recuperação enviado! Verifique sua caixa de entrada (e spam).');
+    }
+}
+
+async function handleReenviarEmail(e) {
+    e.preventDefault();
+    const email = prompt('Digite o email para reenviar a confirmação:');
+    if (!email) return;
+    
+    try {
+        const { error } = await sb.auth.resend({
+            type: 'signup',
+            email: email.trim()
+        });
+        if (error) {
+            toast(traduzirErroAuth(error), true);
+        } else {
+            toast('Email de confirmação reenviado! Verifique sua caixa (e a pasta de spam).');
+        }
+    } catch(e) {
+        toast('Erro ao reenviar email.', true);
     }
 }
 
@@ -798,6 +916,10 @@ async function loadAll(forceRefresh = false) {
                 ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas
             });
             console.log('✓ Cache salvo');
+            
+            // Pre-fetch dos itens das 3 vendas mais recentes em background
+            // (assim quando o usuário clica em "Ver", já está pronto)
+            preFetchItensVendas();
         } else {
             // Limpar cache ruim se existir
             limparCache(currentUser.id);
@@ -837,6 +959,30 @@ async function recarregarDados() {
     const aviso = document.getElementById('aviso-recarregar');
     if (aviso) aviso.remove();
     await loadAll(true); // force refresh
+}
+
+// Pre-fetch dos itens das 3 vendas mais recentes em background
+// Roda silenciosamente DEPOIS que o app já carregou (sem bloquear UI)
+async function preFetchItensVendas() {
+    if (!DB.vendas || DB.vendas.length === 0) return;
+    
+    // Pegar até 3 vendas mais recentes que ainda não têm itens carregados
+    const vendasParaFetch = DB.vendas.slice(0, 3).filter(v => !v.itens);
+    if (vendasParaFetch.length === 0) return;
+    
+    console.log(`🔄 Pre-fetch de itens para ${vendasParaFetch.length} venda(s) em background...`);
+    
+    for (const v of vendasParaFetch) {
+        try {
+            const { data } = await sb.from('vendas').select('itens').eq('id', v.id).maybeSingle();
+            if (data && data.itens) {
+                v.itens = data.itens;
+                console.log(`✓ Itens pre-carregados: venda #${v.id}`);
+            }
+        } catch(e) {
+            console.log(`⚠️ Pre-fetch falhou para venda #${v.id}:`, e.message);
+        }
+    }
 }
 
 // ========================================
@@ -2145,7 +2291,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 })();
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v12.5.0 - inicializando...');
+console.log('🚀 CMV Control v12.7.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
