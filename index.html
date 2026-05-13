@@ -233,7 +233,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.4.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.5.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -644,14 +644,19 @@ function queryWithTimeout(makeQuery, ms = 20000, label = '', retries = 1) {
     });
 }
 
-// Cache em sessionStorage - SOMENTE salva se dados realmente carregaram
+// Cache em localStorage (persiste entre sessões do navegador)
+// Cache válido por 24 horas - dados são sincronizados em segundo plano
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24h
 function loadFromCache(userId) {
     try {
         const k = `cmv-cache-${userId}`;
-        const raw = sessionStorage.getItem(k);
+        const raw = localStorage.getItem(k);
         if (!raw) return null;
         const c = JSON.parse(raw);
-        if (Date.now() - c.t > 5 * 60 * 1000) return null;
+        if (Date.now() - c.t > CACHE_TTL) {
+            localStorage.removeItem(k);
+            return null;
+        }
         // Validar que o cache tem dados úteis (não está vazio)
         if (!c.d || !c.d.produtos) return null;
         return c.d;
@@ -660,13 +665,21 @@ function loadFromCache(userId) {
 
 function saveToCache(userId, data) {
     try {
-        sessionStorage.setItem(`cmv-cache-${userId}`, JSON.stringify({ t: Date.now(), d: data }));
-    } catch(e) {}
+        localStorage.setItem(`cmv-cache-${userId}`, JSON.stringify({ t: Date.now(), d: data }));
+    } catch(e) {
+        // Se localStorage estourou, limpar caches antigos
+        try {
+            Object.keys(localStorage).forEach(k => {
+                if (k.startsWith('cmv-cache-')) localStorage.removeItem(k);
+            });
+            localStorage.setItem(`cmv-cache-${userId}`, JSON.stringify({ t: Date.now(), d: data }));
+        } catch(e2) {}
+    }
 }
 
 function limparCache(userId) {
     try {
-        sessionStorage.removeItem(`cmv-cache-${userId}`);
+        localStorage.removeItem(`cmv-cache-${userId}`);
     } catch(e) {}
 }
 
@@ -2121,9 +2134,18 @@ loading(false);}
 function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileInput.value='';$('upload-file').textContent='';uploadBox.classList.remove('has-file');}
 
 
+// PRE-WARM: aquecer conexão Supabase em paralelo (DNS + TCP + SSL handshake)
+// Isso economiza ~200-500ms da primeira requisição
+(() => {
+    try {
+        fetch('https://jowomcluexjbibioytuw.supabase.co/rest/v1/?apikey=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impvd29tY2x1ZXhqYmliaW95dHV3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxMzg4NzQsImV4cCI6MjA5MTcxNDg3NH0.vIp064WCYvPWCJjHKdqryMUaOsFK5KKfg0dxv_tEyO4', {
+            method: 'HEAD', mode: 'no-cors', cache: 'no-store'
+        }).catch(() => {});
+    } catch(e) {}
+})();
+
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-// Apenas marcamos o início para debug.
-console.log('🚀 CMV Control v12.4.0 - inicializando...');
+console.log('🚀 CMV Control v12.5.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
