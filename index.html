@@ -51,6 +51,9 @@ body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);min-he
 .btn-logout{background:var(--bg3);border:none;padding:0.5rem 1rem;border-radius:6px;color:var(--txt2);font-size:0.85rem;cursor:pointer;transition:all 0.2s;}
 .btn-logout:hover{background:var(--red);color:white;}
 .nav{display:flex;gap:0.4rem;padding:0.75rem 1.5rem;background:var(--bg2);border-bottom:1px solid var(--brd);overflow-x:auto;}
+.tipo-tab{background:var(--bg2);border:1px solid var(--bg3);color:var(--txt2);padding:0.4rem 0.8rem;border-radius:6px;cursor:pointer;}
+.tipo-tab.active{background:var(--blue);color:white;border-color:var(--blue);}
+.ing-item.sub-item{border-left:3px solid var(--blue);}
 .nav-btn{background:transparent;border:none;padding:0.6rem 1rem;border-radius:8px;color:var(--txt2);font-size:0.9rem;cursor:pointer;white-space:nowrap;transition:all 0.2s;}
 .nav-btn:hover{background:var(--bg3);}
 .nav-btn.active{background:var(--blue);color:white;}
@@ -235,7 +238,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.8.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.9.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -250,6 +253,7 @@ td{font-size:0.9rem;}
         <button class="nav-btn" data-p="sobremesas">🍰 Sobremesas</button>
         <button class="nav-btn" data-p="extras">➕ Extras</button>
         <button class="nav-btn" data-p="ingredientes">🧅 Ingredientes</button>
+        <button class="nav-btn" data-p="sub-receitas">🧪 Sub-Receitas</button>
         <button class="nav-btn" data-p="fichas">📋 Fichas</button>
         <button class="nav-btn" data-p="importar">📥 Importar</button>
         <button class="nav-btn" data-p="analise">📈 Análise</button>
@@ -310,7 +314,9 @@ td{font-size:0.9rem;}
         <div class="page" id="p-ingredientes"><div class="card"><div class="card-head"><span class="card-title">🧅 Ingredientes</span><div class="card-actions"><div class="search-box"><span>🔍</span><input type="text" id="search-ing" placeholder="Buscar..." oninput="filtrar('ing')"></div><button class="btn btn-p" onclick="abrirModal('mod-ing')">+ Novo</button></div></div><div class="alert info">💡 Cadastre em <strong>kg</strong> ou <strong>L</strong>. Na ficha use <strong>g</strong> ou <strong>ml</strong>.</div><div class="tbl-wrap"><table><thead><tr><th>Nome</th><th>Un</th><th>Custo/Un</th><th>Fornecedor</th><th></th></tr></thead><tbody id="tbl-ing"></tbody></table></div></div></div>
         
         <!-- FICHAS -->
-        <div class="page" id="p-fichas"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📋 Fichas Técnicas</div><div class="alert info">💡 O custo é calculado automaticamente pela ficha.</div><div class="field" style="max-width:400px;"><label>Produto</label><select id="ficha-prod" onchange="carregarFicha()"></select></div><div id="ficha-area" style="display:none;margin-top:1rem;"><div style="background:var(--bg3);border-radius:10px;padding:1rem;"><div style="font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;">🧅 Adicionar Ingrediente</div><div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;"><div class="field" style="flex:2;min-width:200px;margin:0;"><label>Ingrediente</label><select id="ficha-ing"></select></div><div class="field" style="width:100px;margin:0;"><label>Qtd</label><input type="number" id="ficha-qtd" placeholder="150" step="1" min="0"></div><div class="field" style="width:70px;margin:0;"><label>Un</label><select id="ficha-un"><option selected>g</option><option>ml</option><option>un</option></select></div><button class="btn btn-p" onclick="addIngFicha()">+ Add</button></div><div class="ing-list" id="ficha-list"></div></div><div class="res-box" style="margin-top:1rem;"><div class="res-item"><div class="lbl">Custo</div><div class="val" style="color:var(--green);" id="f-custo">R$ 0</div></div><div class="res-item"><div class="lbl">CMV iFood</div><div class="val" id="f-cmv-if">0%</div></div><div class="res-item"><div class="lbl">CMV AnotaAi</div><div class="val" id="f-cmv-an">0%</div></div></div></div></div></div>
+        <div class="page" id="p-sub-receitas"><div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.6rem;"><div class="card-title" style="margin:0;">🧪 Sub-Receitas</div><button class="btn btn-p" onclick="abrirModal('mod-sub')">+ Nova</button></div><div class="alert info">💡 Crie preparos intermediários (ex: Molho Vermelho) e use-os dentro de outras fichas.</div><div class="field" style="max-width:400px;"><label>Sub-Receita</label><select id="sub-sel" onchange="carregarSubReceita()"></select></div><div id="sub-area" style="display:none;margin-top:1rem;"><div style="display:flex;justify-content:space-between;align-items:center;gap:0.6rem;margin-bottom:0.75rem;flex-wrap:wrap;"><div style="font-size:0.85rem;color:var(--txt2);">Rendimento: <strong id="sub-rend-info">—</strong></div><div style="display:flex;gap:0.5rem;"><button class="btn btn-e btn-sm" onclick="editarSubReceitaAtual()">✏️ Editar</button><button class="btn btn-d btn-sm" onclick="excluirSubReceitaAtual()">🗑️ Excluir</button></div></div><div style="background:var(--bg3);border-radius:10px;padding:1rem;"><div style="font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;">➕ Adicionar Item</div><div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;"><button type="button" class="btn btn-sm tipo-tab active" data-tipo="ing" onclick="setTipoItemSub('ing')">🧅 Ingrediente</button><button type="button" class="btn btn-sm tipo-tab" data-tipo="sub" onclick="setTipoItemSub('sub')">🧪 Sub-Receita</button></div><div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;"><div class="field" id="sub-ing-wrap" style="flex:2;min-width:200px;margin:0;"><label>Ingrediente</label><select id="sub-ing"></select></div><div class="field" id="sub-subi-wrap" style="flex:2;min-width:200px;margin:0;display:none;"><label>Sub-Receita</label><select id="sub-subi"></select></div><div class="field" style="width:100px;margin:0;"><label>Qtd</label><input type="number" id="sub-qtd" placeholder="150" step="1" min="0"></div><div class="field" style="width:70px;margin:0;"><label>Un</label><select id="sub-un"><option selected>g</option><option>ml</option><option>un</option></select></div><button class="btn btn-p" onclick="addItemSubReceita()">+ Add</button></div><div class="ing-list" id="sub-list"></div></div><div class="res-box" style="margin-top:1rem;"><div class="res-item"><div class="lbl">Custo Batelada</div><div class="val" style="color:var(--green);" id="sub-custo-tot">R$ 0</div></div><div class="res-item"><div class="lbl">Custo Unitário</div><div class="val" id="sub-custo-unit">—</div></div></div></div></div></div>
+
+        <div class="page" id="p-fichas"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📋 Fichas Técnicas</div><div class="alert info">💡 O custo é calculado automaticamente pela ficha.</div><div class="field" style="max-width:400px;"><label>Produto</label><select id="ficha-prod" onchange="carregarFicha()"></select></div><div id="ficha-area" style="display:none;margin-top:1rem;"><div style="background:var(--bg3);border-radius:10px;padding:1rem;"><div style="font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;">➕ Adicionar Item</div><div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;"><button type="button" class="btn btn-sm tipo-tab active" data-tipo="ing" onclick="setTipoItemFicha('ing')">🧅 Ingrediente</button><button type="button" class="btn btn-sm tipo-tab" data-tipo="sub" onclick="setTipoItemFicha('sub')">🧪 Sub-Receita</button></div><div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;"><div class="field" id="ficha-ing-wrap" style="flex:2;min-width:200px;margin:0;"><label>Ingrediente</label><select id="ficha-ing"></select></div><div class="field" id="ficha-sub-wrap" style="flex:2;min-width:200px;margin:0;display:none;"><label>Sub-Receita</label><select id="ficha-sub"></select></div><div class="field" style="width:100px;margin:0;"><label>Qtd</label><input type="number" id="ficha-qtd" placeholder="150" step="1" min="0"></div><div class="field" style="width:70px;margin:0;"><label>Un</label><select id="ficha-un"><option selected>g</option><option>ml</option><option>un</option></select></div><button class="btn btn-p" onclick="addIngFicha()">+ Add</button></div><div class="ing-list" id="ficha-list"></div></div><div class="res-box" style="margin-top:1rem;"><div class="res-item"><div class="lbl">Custo</div><div class="val" style="color:var(--green);" id="f-custo">R$ 0</div></div><div class="res-item"><div class="lbl">CMV iFood</div><div class="val" id="f-cmv-if">0%</div></div><div class="res-item"><div class="lbl">CMV AnotaAi</div><div class="val" id="f-cmv-an">0%</div></div></div></div></div></div>
         
         <!-- IMPORTAR -->
         <div class="page" id="p-importar"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📥 Importar Vendas (Excel)</div><div class="alert info">💡 Exporte "Itens Vendidos" do iFood/AnotaAi em formato Excel (.xlsx)</div><div class="upload-box" id="upload-box" ><div class="upload-icon">📄</div><div class="upload-text">Clique para selecionar arquivo</div><div id="upload-file" style="margin-top:0.5rem;color:var(--green);font-weight:500;"></div></div><input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;" ><div id="import-preview" style="margin-top:1rem;"></div></div></div>
@@ -372,6 +378,8 @@ td{font-size:0.9rem;}
 <div class="modal-bg" id="mod-ext"><div class="modal"><div class="modal-head"><h3>Extra</h3><button class="modal-close" onclick="fecharModal('mod-ext')">×</button></div><form id="form-ext"><input type="hidden" id="ext-id"><div class="field"><label>Nome *</label><input type="text" id="ext-nome" required></div><div class="form-row"><div class="field"><label>Custo</label><input type="number" id="ext-custo" step="0.01" min="0"></div><div class="field"><label>Preço</label><input type="number" id="ext-preco" step="0.01" min="0"></div></div><button type="submit" class="btn btn-p" style="width:100%;margin-top:0.5rem;">💾 Salvar</button></form></div></div>
 
 <div class="modal-bg" id="mod-ing"><div class="modal"><div class="modal-head"><h3>Ingrediente</h3><button class="modal-close" onclick="fecharModal('mod-ing')">×</button></div><form id="form-ing"><input type="hidden" id="ing-id"><div class="field"><label>Nome *</label><input type="text" id="ing-nome" required></div><div class="form-row"><div class="field"><label>Unidade</label><select id="ing-un"><option value="kg" selected>kg</option><option value="L">L</option><option value="un">un</option></select></div><div class="field"><label>Custo/Un</label><input type="number" id="ing-custo" step="0.01" min="0"></div></div><div class="field"><label>Fornecedor</label><input type="text" id="ing-forn" placeholder="Opcional"></div><button type="submit" class="btn btn-p" style="width:100%;margin-top:0.5rem;">💾 Salvar</button></form></div></div>
+
+<div class="modal-bg" id="mod-sub"><div class="modal"><div class="modal-head"><h3>Sub-Receita</h3><button class="modal-close" onclick="fecharModal('mod-sub')">×</button></div><form id="form-sub"><input type="hidden" id="sub-id"><div class="field"><label>Nome *</label><input type="text" id="sub-nome" placeholder="Ex: Molho Vermelho" required></div><div class="alert info" style="font-size:0.8rem;">💡 O <strong>rendimento</strong> é quanto a receita produz no total (ex: 1200g de molho). Serve para calcular o custo por unidade.</div><div class="form-row"><div class="field"><label>Rendimento *</label><input type="number" id="sub-rend" step="0.01" min="0.01" required></div><div class="field"><label>Unidade</label><select id="sub-rend-un"><option value="g" selected>g</option><option value="ml">ml</option><option value="un">un</option></select></div></div><button type="submit" class="btn btn-p" style="width:100%;margin-top:0.9rem;">💾 Salvar</button></form></div></div>
 
 <div class="modal-bg" id="mod-confirm"><div class="modal" style="max-width:350px;"><div class="modal-body" style="text-align:center;padding:2rem;"><div id="conf-icon" style="font-size:3rem;margin-bottom:1rem;"></div><h3 id="conf-title" style="margin-bottom:0.5rem;"></h3><p id="conf-text" style="color:var(--txt2);margin-bottom:1.5rem;"></p><div style="display:flex;gap:0.75rem;"><button class="btn btn-s" style="flex:1;" onclick="fecharModal('mod-confirm')">Cancelar</button><button class="btn btn-d" style="flex:1;" id="conf-btn">Excluir</button></div></div></div></div>
 
@@ -1055,22 +1063,59 @@ function calcCustoTotal(custoIng, fat, isIfood) {
     return custoIng + (fat * taxaTotal / 100);
 }
 
-function calcCustoProduto(prodId) {
-    const itens = DB.fichas.filter(f => f.produto_id === prodId);
-    let custo = 0;
-    itens.forEach(f => {
-        const ing = DB.ingredientes.find(i => i.id === f.ingrediente_id);
-        if (!ing) return;
-        const qtd = parseFloat(f.qtd) || 0;
-        const cIng = parseFloat(ing.custo) || 0;
-        const uIng = (ing.un || 'kg').toLowerCase();
-        const uFicha = (f.un || 'g').toLowerCase();
+function isSubReceita(p) { return p && p.tipo === 'sub_receita'; }
+function produtosPratos() { return DB.produtos.filter(p => !isSubReceita(p)); }
+function subReceitas() { return DB.produtos.filter(isSubReceita); }
+
+function calcCustoItem(f, visitados) {
+    const qtd = parseFloat(f.qtd) || 0;
+    if (qtd <= 0) return 0;
+    const uFicha = (f.un || 'g').toLowerCase();
+    if (f.sub_receita_id) {
+        const sub = DB.produtos.find(p => p.id === f.sub_receita_id);
+        if (!sub || !isSubReceita(sub)) return 0;
+        const rend = parseFloat(sub.rendimento) || 0;
+        if (rend <= 0) return 0;
+        const custoBatelada = calcCustoProduto(sub.id, visitados);
+        const uSub = (sub.rendimento_un || 'g').toLowerCase();
         let fator = 1;
-        if (uIng === 'kg' && uFicha === 'g') fator = 0.001;
-        else if (uIng === 'l' && uFicha === 'ml') fator = 0.001;
-        custo += cIng * qtd * fator;
-    });
-    return custo;
+        if (uSub === 'g' && uFicha === 'ml') fator = 1;
+        else if (uSub === 'ml' && uFicha === 'g') fator = 1;
+        const custoUnit = custoBatelada / rend;
+        return custoUnit * qtd * fator;
+    }
+    const ing = DB.ingredientes.find(i => i.id === f.ingrediente_id);
+    if (!ing) return 0;
+    const cIng = parseFloat(ing.custo) || 0;
+    const uIng = (ing.un || 'kg').toLowerCase();
+    let fator = 1;
+    if (uIng === 'kg' && uFicha === 'g') fator = 0.001;
+    else if (uIng === 'l' && uFicha === 'ml') fator = 0.001;
+    return cIng * qtd * fator;
+}
+
+function calcCustoProduto(prodId, visitados) {
+    visitados = visitados || new Set();
+    if (visitados.has(prodId) || visitados.size > 10) return 0;
+    const v = new Set(visitados);
+    v.add(prodId);
+    const itens = DB.fichas.filter(f => f.produto_id === prodId);
+    return itens.reduce((s, f) => s + calcCustoItem(f, v), 0);
+}
+
+function temCicloSubReceita(fichaId, subId) {
+    if (fichaId === subId) return true;
+    const visitar = [subId];
+    const visto = new Set();
+    while (visitar.length) {
+        const cur = visitar.pop();
+        if (visto.has(cur)) continue;
+        visto.add(cur);
+        if (cur === fichaId) return true;
+        DB.fichas.filter(f => f.produto_id === cur && f.sub_receita_id)
+            .forEach(f => visitar.push(f.sub_receita_id));
+    }
+    return false;
 }
 
 // ========================================
@@ -1126,6 +1171,10 @@ function preencherForm(mid, id) {
     } else if (mid === 'mod-ing') {
         const i = DB.ingredientes.find(x => x.id === id);
         if (i) { $('ing-id').value = id; $('ing-nome').value = i.nome; $('ing-un').value = i.un || 'kg'; $('ing-custo').value = i.custo || ''; $('ing-forn').value = i.forn || ''; }
+    } else if (mid === 'mod-sub') {
+        const s = DB.produtos.find(x => x.id === id);
+        if (s) { $('sub-id').value = id; $('sub-nome').value = s.nome; $('sub-rend').value = s.rendimento || ''; $('sub-rend-un').value = s.rendimento_un || 'g'; }
+        else { $('sub-id').value = ''; }
     }
 }
 
@@ -1266,7 +1315,7 @@ async function execDel(tabela, id) {
         toast('Erro: ' + error.message, true);
     } else {
         DB[tabela] = DB[tabela].filter(x => x.id !== id);
-        if (tabela === 'produtos') DB.fichas = DB.fichas.filter(f => f.produto_id !== id);
+        if (tabela === 'produtos') DB.fichas = DB.fichas.filter(f => f.produto_id !== id && f.sub_receita_id !== id);
         if (tabela === 'ingredientes') DB.fichas = DB.fichas.filter(f => f.ingrediente_id !== id);
         renderAll();
         toast('Excluído!');
@@ -1290,7 +1339,7 @@ function filtrar(tipo) {
 // RENDER
 // ========================================
 function renderProd() {
-    let data = DB.produtos;
+    let data = produtosPratos();
     const filCat = $('fil-cat')?.value;
     if (filCat) data = data.filter(p => p.cat === filCat);
     const filTam = $('fil-tam')?.value;
@@ -1344,12 +1393,16 @@ function renderVendas() {
 }
 
 function renderFichaSelects() {
-    $('ficha-prod').innerHTML = '<option value="">Selecione...</option>' + DB.produtos.map(p => `<option value="${p.id}">${p.nome} (${p.tam || 'G'})</option>`).join('');
+    $('ficha-prod').innerHTML = '<option value="">Selecione...</option>' + produtosPratos().map(p => `<option value="${p.id}">${p.nome} (${p.tam || 'G'})</option>`).join('');
     $('ficha-ing').innerHTML = '<option value="">Selecione...</option>' + DB.ingredientes.map(i => `<option value="${i.id}">${i.nome} — ${R$(i.custo)}/${i.un}</option>`).join('');
+    $('ficha-sub').innerHTML = '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome} (${s.rendimento_un || 'g'})</option>`).join('');
+    $('sub-sel').innerHTML = '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+    $('sub-ing').innerHTML = '<option value="">Selecione...</option>' + DB.ingredientes.map(i => `<option value="${i.id}">${i.nome} — ${R$(i.custo)}/${i.un}</option>`).join('');
+    $('sub-subi').innerHTML = '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
 }
 
 function renderRanking() {
-    const prods = DB.produtos.map(p => {
+    const prods = produtosPratos().map(p => {
         const custoIng = p.custoFicha || calcCustoProduto(p.id);
         return { ...p, custoIng, cmv: calcCMV(custoIng, p.preco_ifood, true) };
     }).filter(p => p.custoIng > 0 && p.preco_ifood > 0).sort((a, b) => b.cmv - a.cmv).slice(0, 10);
@@ -1358,9 +1411,10 @@ function renderRanking() {
 }
 
 function atualizarDash() {
-    const totalProds = DB.produtos.length;
+    const totalProds = produtosPratos().length;
     const totalIngs = DB.ingredientes.length;
-    const totalFichas = new Set(DB.fichas.map(f => f.produto_id)).size;
+    const pratoIds = new Set(produtosPratos().map(p => p.id));
+    const totalFichas = new Set(DB.fichas.filter(f => pratoIds.has(f.produto_id)).map(f => f.produto_id)).size;
     const totalVendas = DB.vendas.reduce((s, v) => s + (parseFloat(v.total_fat) || 0), 0);
     
     $('dash-kpis').innerHTML = `
@@ -1378,7 +1432,7 @@ function renderChartCMV() {
         
         const cats = ['macarrao', 'risoto', 'nhoque', 'combo'];
         const data = cats.map(cat => {
-            const prods = DB.produtos.filter(p => p.cat === cat && (p.custoFicha || calcCustoProduto(p.id)) > 0);
+            const prods = produtosPratos().filter(p => p.cat === cat && (p.custoFicha || calcCustoProduto(p.id)) > 0);
             if (prods.length === 0) return 0;
             return prods.reduce((s, p) => s + calcCMV(p.custoFicha || calcCustoProduto(p.id), p.preco_ifood, true), 0) / prods.length;
         });
@@ -1442,17 +1496,15 @@ function carregarFicha() {
 function renderFichaItens() {
     const prodId = parseInt($('ficha-prod').value);
     const itens = DB.fichas.filter(f => f.produto_id === prodId);
-    $('ficha-list').innerHTML = itens.length === 0 ? '<div class="empty" style="padding:1rem;">Nenhum ingrediente</div>' : itens.map(f => {
+    $('ficha-list').innerHTML = itens.length === 0 ? '<div class="empty" style="padding:1rem;">Nenhum item</div>' : itens.map(f => {
+        const c = calcCustoItem(f, new Set([prodId]));
+        if (f.sub_receita_id) {
+            const sub = DB.produtos.find(p => p.id === f.sub_receita_id);
+            if (!sub) return '';
+            return `<div class="ing-item sub-item"><div>🧪 <strong>${sub.nome}</strong> <span style="color:var(--txt3)">${fmtQtd(f.qtd)} ${f.un || 'g'}</span></div><div style="display:flex;align-items:center;gap:0.6rem;"><span class="mono" style="color:var(--green);font-weight:600;">${R$(c)}</span><button class="btn btn-d btn-sm" onclick="remFichaItem(${f.id})">×</button></div></div>`;
+        }
         const ing = DB.ingredientes.find(i => i.id === f.ingrediente_id);
         if (!ing) return '';
-        const qtd = parseFloat(f.qtd) || 0;
-        const cIng = parseFloat(ing.custo) || 0;
-        const uIng = (ing.un || 'kg').toLowerCase();
-        const uFicha = (f.un || 'g').toLowerCase();
-        let fator = 1;
-        if (uIng === 'kg' && uFicha === 'g') fator = 0.001;
-        else if (uIng === 'l' && uFicha === 'ml') fator = 0.001;
-        const c = cIng * qtd * fator;
         return `<div class="ing-item"><div><strong>${ing.nome}</strong> <span style="color:var(--txt3)">${fmtQtd(f.qtd)} ${f.un || 'g'}</span></div><div style="display:flex;align-items:center;gap:0.6rem;"><span class="mono" style="color:var(--green);font-weight:600;">${R$(c)}</span><button class="btn btn-d btn-sm" onclick="remFichaItem(${f.id})">×</button></div></div>`;
     }).join('');
     calcFichaCusto();
@@ -1471,21 +1523,37 @@ function calcFichaCusto() {
     $('f-cmv-an').style.color = cmvColor(cmvAn);
 }
 
+let tipoItemFicha = 'ing';
+function setTipoItemFicha(t) {
+    tipoItemFicha = t;
+    document.querySelectorAll('#p-fichas .tipo-tab').forEach(b => b.classList.toggle('active', b.dataset.tipo === t));
+    $('ficha-ing-wrap').style.display = t === 'ing' ? '' : 'none';
+    $('ficha-sub-wrap').style.display = t === 'sub' ? '' : 'none';
+}
+
 async function addIngFicha() {
     const prodId = parseInt($('ficha-prod').value);
-    const ingId = parseInt($('ficha-ing').value);
     const qtd = parseFloat($('ficha-qtd').value);
     const un = $('ficha-un').value;
-    if (!prodId || !ingId || !qtd || qtd <= 0) { toast('Preencha os campos!', true); return; }
-    
+    if (!prodId || !qtd || qtd <= 0) { toast('Preencha os campos!', true); return; }
+
+    const payload = { produto_id: prodId, qtd, un, user_id: currentUser.id };
+    if (tipoItemFicha === 'sub') {
+        const subId = parseInt($('ficha-sub').value);
+        if (!subId) { toast('Selecione a sub-receita!', true); return; }
+        if (temCicloSubReceita(prodId, subId)) { toast('Isso criaria um loop entre receitas!', true); return; }
+        payload.sub_receita_id = subId;
+        payload.ingrediente_id = null;
+    } else {
+        const ingId = parseInt($('ficha-ing').value);
+        if (!ingId) { toast('Selecione o ingrediente!', true); return; }
+        payload.ingrediente_id = ingId;
+        payload.sub_receita_id = null;
+    }
+
     loading(true);
     try {
-        const { data, error } = await sb.from('fichas').insert({ 
-            produto_id: prodId, 
-            ingrediente_id: ingId, 
-            qtd, un, 
-            user_id: currentUser.id 
-        }).select().maybeSingle();
+        const { data, error } = await sb.from('fichas').insert(payload).select().maybeSingle();
         
         if (error) throw error;
         
@@ -1499,6 +1567,7 @@ async function addIngFicha() {
         
         $('ficha-qtd').value = '';
         $('ficha-ing').value = '';
+        $('ficha-sub').value = '';
         
         const custoTotal = calcCustoProduto(prodId);
         const prod = DB.produtos.find(p => p.id === prodId);
@@ -1544,6 +1613,151 @@ async function remFichaItem(id) {
     }
     loading(false);
 }
+
+// ========================================
+// SUB-RECEITAS
+// ========================================
+let tipoItemSub = 'ing';
+function setTipoItemSub(t) {
+    tipoItemSub = t;
+    document.querySelectorAll('#p-sub-receitas .tipo-tab').forEach(b => b.classList.toggle('active', b.dataset.tipo === t));
+    $('sub-ing-wrap').style.display = t === 'ing' ? '' : 'none';
+    $('sub-subi-wrap').style.display = t === 'sub' ? '' : 'none';
+}
+
+function carregarSubReceita() {
+    const id = parseInt($('sub-sel').value);
+    if (!id) { $('sub-area').style.display = 'none'; return; }
+    const sub = DB.produtos.find(p => p.id === id);
+    if (!sub) { $('sub-area').style.display = 'none'; return; }
+    $('sub-area').style.display = 'block';
+    $('sub-rend-info').textContent = `${fmtQtd(sub.rendimento)} ${sub.rendimento_un || 'g'}`;
+    renderSubReceitaItens();
+}
+
+function renderSubReceitaItens() {
+    const id = parseInt($('sub-sel').value);
+    const sub = DB.produtos.find(p => p.id === id);
+    if (!sub) return;
+    const itens = DB.fichas.filter(f => f.produto_id === id);
+    $('sub-list').innerHTML = itens.length === 0 ? '<div class="empty" style="padding:1rem;">Nenhum item</div>' : itens.map(f => {
+        const c = calcCustoItem(f, new Set([id]));
+        if (f.sub_receita_id) {
+            const s2 = DB.produtos.find(p => p.id === f.sub_receita_id);
+            if (!s2) return '';
+            return `<div class="ing-item sub-item"><div>🧪 <strong>${s2.nome}</strong> <span style="color:var(--txt3)">${fmtQtd(f.qtd)} ${f.un || 'g'}</span></div><div style="display:flex;align-items:center;gap:0.6rem;"><span class="mono" style="color:var(--green);font-weight:600;">${R$(c)}</span><button class="btn btn-d btn-sm" onclick="remFichaItem(${f.id})">×</button></div></div>`;
+        }
+        const ing = DB.ingredientes.find(i => i.id === f.ingrediente_id);
+        if (!ing) return '';
+        return `<div class="ing-item"><div><strong>${ing.nome}</strong> <span style="color:var(--txt3)">${fmtQtd(f.qtd)} ${f.un || 'g'}</span></div><div style="display:flex;align-items:center;gap:0.6rem;"><span class="mono" style="color:var(--green);font-weight:600;">${R$(c)}</span><button class="btn btn-d btn-sm" onclick="remFichaItem(${f.id})">×</button></div></div>`;
+    }).join('');
+    const custoTot = calcCustoProduto(id);
+    const rend = parseFloat(sub.rendimento) || 0;
+    $('sub-custo-tot').textContent = R$(custoTot);
+    $('sub-custo-unit').textContent = rend > 0 ? `${R$(custoTot / rend)}/${sub.rendimento_un || 'g'}` : '—';
+}
+
+async function addItemSubReceita() {
+    const subId = parseInt($('sub-sel').value);
+    const qtd = parseFloat($('sub-qtd').value);
+    const un = $('sub-un').value;
+    if (!subId || !qtd || qtd <= 0) { toast('Preencha os campos!', true); return; }
+
+    const payload = { produto_id: subId, qtd, un, user_id: currentUser.id };
+    if (tipoItemSub === 'sub') {
+        const childId = parseInt($('sub-subi').value);
+        if (!childId) { toast('Selecione a sub-receita!', true); return; }
+        if (temCicloSubReceita(subId, childId)) { toast('Isso criaria um loop entre receitas!', true); return; }
+        payload.sub_receita_id = childId;
+        payload.ingrediente_id = null;
+    } else {
+        const ingId = parseInt($('sub-ing').value);
+        if (!ingId) { toast('Selecione o ingrediente!', true); return; }
+        payload.ingrediente_id = ingId;
+        payload.sub_receita_id = null;
+    }
+
+    loading(true);
+    try {
+        const { data, error } = await sb.from('fichas').insert(payload).select().maybeSingle();
+        if (error) throw error;
+        if (data) DB.fichas.push(data);
+        else {
+            const r = await sb.from('fichas').select('*').eq('user_id', currentUser.id);
+            DB.fichas = r.data || [];
+        }
+        $('sub-qtd').value = ''; $('sub-ing').value = ''; $('sub-subi').value = '';
+        DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
+        renderSubReceitaItens();
+        renderAll();
+        $('sub-sel').value = subId; carregarSubReceita();
+        toast('Adicionado!');
+    } catch(e) {
+        toast('Erro: ' + e.message, true);
+    }
+    loading(false);
+}
+
+function editarSubReceitaAtual() {
+    const id = parseInt($('sub-sel').value);
+    if (id) abrirModal('mod-sub', id);
+}
+
+function excluirSubReceitaAtual() {
+    const id = parseInt($('sub-sel').value);
+    if (!id) return;
+    const sub = DB.produtos.find(p => p.id === id);
+    const usadoEm = DB.fichas.filter(f => f.sub_receita_id === id).length;
+    const txt = usadoEm > 0
+        ? `"${sub.nome}" é usada em ${usadoEm} item(ns) de outras fichas. Excluir vai remover essas referências.`
+        : 'Ação irreversível.';
+    $('conf-icon').textContent = '🗑️';
+    $('conf-title').textContent = 'Excluir sub-receita?';
+    $('conf-text').textContent = txt;
+    $('conf-btn').onclick = () => { execDel('produtos', id); fecharModal('mod-confirm'); };
+    abrirModal('mod-confirm');
+}
+
+$('form-sub').onsubmit = async e => {
+    e.preventDefault();
+    const id = parseInt($('sub-id').value);
+    const data = {
+        nome: $('sub-nome').value,
+        tipo: 'sub_receita',
+        rendimento: parseFloat($('sub-rend').value) || 0,
+        rendimento_un: $('sub-rend-un').value,
+        user_id: currentUser.id
+    };
+    if (!data.nome || data.rendimento <= 0) { toast('Preencha nome e rendimento!', true); return; }
+
+    loading(true);
+    let result;
+    if (id) {
+        result = await sb.from('produtos').update(data).eq('id', id).eq('user_id', currentUser.id).select().maybeSingle();
+        if (!result.error && result.data) {
+            const idx = DB.produtos.findIndex(x => x.id === id);
+            if (idx >= 0) DB.produtos[idx] = { ...DB.produtos[idx], ...result.data };
+        }
+    } else {
+        result = await sb.from('produtos').insert(data).select().maybeSingle();
+        if (!result.error && result.data) DB.produtos.push(result.data);
+        else if (!result.error) {
+            const r = await sb.from('produtos').select('*').eq('user_id', currentUser.id).order('nome');
+            DB.produtos = r.data || [];
+        }
+    }
+    loading(false);
+
+    if (result.error) {
+        toast('Erro: ' + result.error.message, true);
+    } else {
+        fecharModal('mod-sub');
+        const novoId = id || (result.data && result.data.id);
+        renderAll();
+        if (novoId) { $('sub-sel').value = novoId; carregarSubReceita(); }
+        toast(id ? 'Atualizado!' : 'Criado!');
+    }
+};
 
 
 // ========================================
@@ -2280,17 +2494,16 @@ loading(false);}
 function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileInput.value='';$('upload-file').textContent='';uploadBox.classList.remove('has-file');}
 
 
-// MIGRAÇÃO v12.8: limpar caches antigos (podiam ter dados misturados de outros usuários)
+// MIGRAÇÃO v12.9: limpar cache para incluir colunas tipo/rendimento/sub_receita_id
 (() => {
     try {
-        const migrationKey = 'cmv-migration-v12.8';
+        const migrationKey = 'cmv-migration-v12.9';
         if (!localStorage.getItem(migrationKey)) {
-            // Limpa TODOS os caches antigos
             Object.keys(localStorage).forEach(k => {
                 if (k.startsWith('cmv-cache-')) localStorage.removeItem(k);
             });
             localStorage.setItem(migrationKey, '1');
-            console.log('🧹 Cache limpo (migração de segurança v12.8)');
+            console.log('🧹 Cache limpo (migração v12.9 - sub-receitas)');
         }
     } catch(e) {}
 })();
@@ -2306,7 +2519,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 })();
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v12.8.0 - inicializando...');
+console.log('🚀 CMV Control v12.9.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
