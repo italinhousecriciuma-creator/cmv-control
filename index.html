@@ -235,7 +235,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.7.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v12.8.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -844,13 +844,13 @@ async function loadAll(forceRefresh = false) {
         
         const queries = [
             queryWithTimeout(mk(() => sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle()), 20000, 'perfis', 1),
-            queryWithTimeout(mk(() => sb.from('produtos').select('*').order('nome')), 20000, 'produtos', 1),
-            queryWithTimeout(mk(() => sb.from('bebidas').select('*').order('nome')), 20000, 'bebidas', 1),
-            queryWithTimeout(mk(() => sb.from('sobremesas').select('*').order('nome')), 20000, 'sobremesas', 1),
-            queryWithTimeout(mk(() => sb.from('extras').select('*').order('nome')), 20000, 'extras', 1),
-            queryWithTimeout(mk(() => sb.from('ingredientes').select('*').order('nome')), 20000, 'ingredientes', 1),
-            queryWithTimeout(mk(() => sb.from('fichas').select('*')), 20000, 'fichas', 1),
-            queryWithTimeout(mk(() => sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').order('created_at', { ascending: false })), 20000, 'vendas', 1)
+            queryWithTimeout(mk(() => sb.from('produtos').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'produtos', 1),
+            queryWithTimeout(mk(() => sb.from('bebidas').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'bebidas', 1),
+            queryWithTimeout(mk(() => sb.from('sobremesas').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'sobremesas', 1),
+            queryWithTimeout(mk(() => sb.from('extras').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'extras', 1),
+            queryWithTimeout(mk(() => sb.from('ingredientes').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'ingredientes', 1),
+            queryWithTimeout(mk(() => sb.from('fichas').select('*').eq('user_id', currentUser.id)), 20000, 'fichas', 1),
+            queryWithTimeout(mk(() => sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').eq('user_id', currentUser.id).order('created_at', { ascending: false })), 20000, 'vendas', 1)
         ];
         
         const [perfilRes, produtosRes, bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes] = await Promise.all(queries);
@@ -974,7 +974,7 @@ async function preFetchItensVendas() {
     
     for (const v of vendasParaFetch) {
         try {
-            const { data } = await sb.from('vendas').select('itens').eq('id', v.id).maybeSingle();
+            const { data } = await sb.from('vendas').select('itens').eq('id', v.id).eq('user_id', currentUser.id).maybeSingle();
             if (data && data.itens) {
                 v.itens = data.itens;
                 console.log(`✓ Itens pre-carregados: venda #${v.id}`);
@@ -1163,7 +1163,7 @@ $('form-prod').onsubmit = async e => {
     loading(true);
     let result;
     if (id) {
-        result = await sb.from('produtos').update(data).eq('id', id).select().maybeSingle();
+        result = await sb.from('produtos').update(data).eq('id', id).eq('user_id', currentUser.id).select().maybeSingle();
         if (!result.error && result.data) {
             const idx = DB.produtos.findIndex(x => x.id === id);
             if (idx >= 0) DB.produtos[idx] = { ...DB.produtos[idx], ...result.data };
@@ -1172,7 +1172,7 @@ $('form-prod').onsubmit = async e => {
         result = await sb.from('produtos').insert(data).select().maybeSingle();
         if (!result.error && !result.data) {
             // Recarregar caso retorne null
-            const r = await sb.from('produtos').select('*').order('nome');
+            const r = await sb.from('produtos').select('*').eq('user_id', currentUser.id).order('nome');
             DB.produtos = r.data || [];
         }
         if (!result.error) DB.produtos.push(result.data);
@@ -1194,8 +1194,8 @@ $('form-beb').onsubmit = async e => {
     const data = { nome: $('beb-nome').value, custo: parseFloat($('beb-custo').value) || 0, preco_ifood: parseFloat($('beb-pif').value) || 0, preco_anota: parseFloat($('beb-pan').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('bebidas').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.bebidas.findIndex(x => x.id === id); if (idx >= 0) DB.bebidas[idx] = { ...DB.bebidas[idx], ...result.data }; } }
-    else { result = await sb.from('bebidas').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.bebidas.push(result.data); else if (!result.error) { const r = await sb.from('bebidas').select('*').order('nome'); DB.bebidas = r.data || []; } }
+    if (id) { result = await sb.from('bebidas').update(data).eq('id', id).eq('user_id', currentUser.id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.bebidas.findIndex(x => x.id === id); if (idx >= 0) DB.bebidas[idx] = { ...DB.bebidas[idx], ...result.data }; } }
+    else { result = await sb.from('bebidas').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.bebidas.push(result.data); else if (!result.error) { const r = await sb.from('bebidas').select('*').eq('user_id', currentUser.id).order('nome'); DB.bebidas = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-beb'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -1207,8 +1207,8 @@ $('form-sob').onsubmit = async e => {
     const data = { nome: $('sob-nome').value, custo: parseFloat($('sob-custo').value) || 0, preco_ifood: parseFloat($('sob-pif').value) || 0, preco_anota: parseFloat($('sob-pan').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('sobremesas').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.sobremesas.findIndex(x => x.id === id); if (idx >= 0) DB.sobremesas[idx] = { ...DB.sobremesas[idx], ...result.data }; } }
-    else { result = await sb.from('sobremesas').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.sobremesas.push(result.data); else if (!result.error) { const r = await sb.from('sobremesas').select('*').order('nome'); DB.sobremesas = r.data || []; } }
+    if (id) { result = await sb.from('sobremesas').update(data).eq('id', id).eq('user_id', currentUser.id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.sobremesas.findIndex(x => x.id === id); if (idx >= 0) DB.sobremesas[idx] = { ...DB.sobremesas[idx], ...result.data }; } }
+    else { result = await sb.from('sobremesas').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.sobremesas.push(result.data); else if (!result.error) { const r = await sb.from('sobremesas').select('*').eq('user_id', currentUser.id).order('nome'); DB.sobremesas = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-sob'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -1220,8 +1220,8 @@ $('form-ext').onsubmit = async e => {
     const data = { nome: $('ext-nome').value, custo: parseFloat($('ext-custo').value) || 0, preco: parseFloat($('ext-preco').value) || 0, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('extras').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.extras.findIndex(x => x.id === id); if (idx >= 0) DB.extras[idx] = { ...DB.extras[idx], ...result.data }; } }
-    else { result = await sb.from('extras').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.extras.push(result.data); else if (!result.error) { const r = await sb.from('extras').select('*').order('nome'); DB.extras = r.data || []; } }
+    if (id) { result = await sb.from('extras').update(data).eq('id', id).eq('user_id', currentUser.id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.extras.findIndex(x => x.id === id); if (idx >= 0) DB.extras[idx] = { ...DB.extras[idx], ...result.data }; } }
+    else { result = await sb.from('extras').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.extras.push(result.data); else if (!result.error) { const r = await sb.from('extras').select('*').eq('user_id', currentUser.id).order('nome'); DB.extras = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-ext'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -1233,8 +1233,8 @@ $('form-ing').onsubmit = async e => {
     const data = { nome: $('ing-nome').value, un: $('ing-un').value, custo: parseFloat($('ing-custo').value) || 0, forn: $('ing-forn').value, user_id: currentUser.id };
     loading(true);
     let result;
-    if (id) { result = await sb.from('ingredientes').update(data).eq('id', id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.ingredientes.findIndex(x => x.id === id); if (idx >= 0) DB.ingredientes[idx] = { ...DB.ingredientes[idx], ...result.data }; } }
-    else { result = await sb.from('ingredientes').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.ingredientes.push(result.data); else if (!result.error) { const r = await sb.from('ingredientes').select('*').order('nome'); DB.ingredientes = r.data || []; } }
+    if (id) { result = await sb.from('ingredientes').update(data).eq('id', id).eq('user_id', currentUser.id).select().maybeSingle(); if (!result.error && result.data) { const idx = DB.ingredientes.findIndex(x => x.id === id); if (idx >= 0) DB.ingredientes[idx] = { ...DB.ingredientes[idx], ...result.data }; } }
+    else { result = await sb.from('ingredientes').insert(data).select().maybeSingle(); if (!result.error && result.data) DB.ingredientes.push(result.data); else if (!result.error) { const r = await sb.from('ingredientes').select('*').eq('user_id', currentUser.id).order('nome'); DB.ingredientes = r.data || []; } }
     loading(false);
     if (result.error) toast('Erro: ' + result.error.message, true);
     else { fecharModal('mod-ing'); renderAll(); toast(id ? 'Atualizado!' : 'Criado!'); }
@@ -1261,7 +1261,7 @@ function confirmar(tipo, id) {
 
 async function execDel(tabela, id) {
     loading(true);
-    const { error } = await sb.from(tabela).delete().eq('id', id);
+    const { error } = await sb.from(tabela).delete().eq('id', id).eq('user_id', currentUser.id);
     if (error) {
         toast('Erro: ' + error.message, true);
     } else {
@@ -1493,7 +1493,7 @@ async function addIngFicha() {
         if (data) {
             DB.fichas.push(data);
         } else {
-            const r = await sb.from('fichas').select('*');
+            const r = await sb.from('fichas').select('*').eq('user_id', currentUser.id);
             DB.fichas = r.data || [];
         }
         
@@ -1504,7 +1504,7 @@ async function addIngFicha() {
         const prod = DB.produtos.find(p => p.id === prodId);
         if (prod) {
             prod.custoFicha = custoTotal;
-            await sb.from('produtos').update({ custo: custoTotal }).eq('id', prodId);
+            await sb.from('produtos').update({ custo: custoTotal }).eq('id', prodId).eq('user_id', currentUser.id);
         }
         
         renderFichaItens();
@@ -1523,7 +1523,7 @@ async function remFichaItem(id) {
     const prodId = ficha?.produto_id;
     
     loading(true);
-    const { error } = await sb.from('fichas').delete().eq('id', id);
+    const { error } = await sb.from('fichas').delete().eq('id', id).eq('user_id', currentUser.id);
     
     if (error) {
         toast('Erro: ' + error.message, true);
@@ -1534,7 +1534,7 @@ async function remFichaItem(id) {
             const prod = DB.produtos.find(p => p.id === prodId);
             if (prod) {
                 prod.custoFicha = custoTotal;
-                await sb.from('produtos').update({ custo: custoTotal }).eq('id', prodId);
+                await sb.from('produtos').update({ custo: custoTotal }).eq('id', prodId).eq('user_id', currentUser.id);
             }
         }
         renderFichaItens();
@@ -1606,7 +1606,7 @@ async function excluirVenda(id) {
     
     loading(true);
     try {
-        const { error } = await sb.from('vendas').delete().eq('id', id);
+        const { error } = await sb.from('vendas').delete().eq('id', id).eq('user_id', currentUser.id);
         if (error) throw error;
         
         DB.vendas = DB.vendas.filter(v => v.id !== id);
@@ -1647,7 +1647,7 @@ async function mostrarAnalise() {
     if (!v.itens) {
         $('analise-area').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--txt3);">Carregando detalhes...</div>';
         try {
-            const { data } = await sb.from('vendas').select('itens').eq('id', id).maybeSingle();
+            const { data } = await sb.from('vendas').select('itens').eq('id', id).eq('user_id', currentUser.id).maybeSingle();
             if (data) v.itens = data.itens;
         } catch(e) {
             console.error('Erro ao buscar itens:', e);
@@ -2280,6 +2280,21 @@ loading(false);}
 function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileInput.value='';$('upload-file').textContent='';uploadBox.classList.remove('has-file');}
 
 
+// MIGRAÇÃO v12.8: limpar caches antigos (podiam ter dados misturados de outros usuários)
+(() => {
+    try {
+        const migrationKey = 'cmv-migration-v12.8';
+        if (!localStorage.getItem(migrationKey)) {
+            // Limpa TODOS os caches antigos
+            Object.keys(localStorage).forEach(k => {
+                if (k.startsWith('cmv-cache-')) localStorage.removeItem(k);
+            });
+            localStorage.setItem(migrationKey, '1');
+            console.log('🧹 Cache limpo (migração de segurança v12.8)');
+        }
+    } catch(e) {}
+})();
+
 // PRE-WARM: aquecer conexão Supabase em paralelo (DNS + TCP + SSL handshake)
 // Isso economiza ~200-500ms da primeira requisição
 (() => {
@@ -2291,7 +2306,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 })();
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v12.7.0 - inicializando...');
+console.log('🚀 CMV Control v12.8.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
