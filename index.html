@@ -238,7 +238,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v12.10.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v13.0.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -873,14 +873,14 @@ async function loadAll(forceRefresh = false) {
         const mk = (fn) => () => fn();
         
         const queries = [
-            queryWithTimeout(mk(() => sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle()), 12000, 'perfis', 1),
-            queryWithTimeout(mk(() => sb.from('produtos').select('*').eq('user_id', currentUser.id).order('nome')), 12000, 'produtos', 1),
-            queryWithTimeout(mk(() => sb.from('bebidas').select('*').eq('user_id', currentUser.id).order('nome')), 12000, 'bebidas', 1),
-            queryWithTimeout(mk(() => sb.from('sobremesas').select('*').eq('user_id', currentUser.id).order('nome')), 12000, 'sobremesas', 1),
-            queryWithTimeout(mk(() => sb.from('extras').select('*').eq('user_id', currentUser.id).order('nome')), 12000, 'extras', 1),
-            queryWithTimeout(mk(() => sb.from('ingredientes').select('*').eq('user_id', currentUser.id).order('nome')), 12000, 'ingredientes', 1),
-            queryWithTimeout(mk(() => sb.from('fichas').select('*').eq('user_id', currentUser.id)), 12000, 'fichas', 1),
-            queryWithTimeout(mk(() => sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').eq('user_id', currentUser.id).order('created_at', { ascending: false })), 12000, 'vendas', 1)
+            queryWithTimeout(mk(() => sb.from('perfis').select('*').eq('user_id', currentUser.id).maybeSingle()), 20000, 'perfis', 1),
+            queryWithTimeout(mk(() => sb.from('produtos').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'produtos', 1),
+            queryWithTimeout(mk(() => sb.from('bebidas').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'bebidas', 1),
+            queryWithTimeout(mk(() => sb.from('sobremesas').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'sobremesas', 1),
+            queryWithTimeout(mk(() => sb.from('extras').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'extras', 1),
+            queryWithTimeout(mk(() => sb.from('ingredientes').select('*').eq('user_id', currentUser.id).order('nome')), 20000, 'ingredientes', 1),
+            queryWithTimeout(mk(() => sb.from('fichas').select('*').eq('user_id', currentUser.id)), 20000, 'fichas', 1),
+            queryWithTimeout(mk(() => sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').eq('user_id', currentUser.id).order('created_at', { ascending: false })), 20000, 'vendas', 1)
         ];
         
         const [perfilRes, produtosRes, bebidasRes, sobremesasRes, extrasRes, ingredientesRes, fichasRes, vendasRes] = await Promise.all(queries);
@@ -2566,6 +2566,20 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
     } catch(e) {}
 })();
 
+// MIGRAÇÃO v13.0: invalida cache uma vez para garantir dados frescos pós-RLS
+(() => {
+    try {
+        const migKey = 'cmv-migration-v13.0';
+        if (!localStorage.getItem(migKey)) {
+            Object.keys(localStorage).forEach(k => {
+                if (k.startsWith('cmv-cache-')) localStorage.removeItem(k);
+            });
+            localStorage.setItem(migKey, '1');
+            console.log('🧹 Cache invalidado (migração v13.0)');
+        }
+    } catch(e) {}
+})();
+
 // PRE-WARM: aquecer Postgres com GET autenticado real (DNS + TCP + SSL + Postgres ready)
 // HEAD com mode:no-cors não acorda o Postgres pq não dispara o preflight CORS completo.
 // Um GET autenticado em uma view leve faz o caminho completo de uma query real.
@@ -2584,7 +2598,7 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
 })();
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v12.10.0 - inicializando...');
+console.log('🚀 CMV Control v13.0.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
