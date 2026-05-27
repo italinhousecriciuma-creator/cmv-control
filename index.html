@@ -238,7 +238,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v13.1.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v13.2.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -637,6 +637,69 @@ async function handleLogout() {
 let lastUserId = null;
 let isLoading = false;
 
+// CORREÇÃO v13.2: Realtime subscription para sincronização em tempo real entre PCs
+let realtimeChannel = null;
+let realtimeTimer = null;
+
+function setupRealtime() {
+    if (!currentUser?.id) return;
+    if (realtimeChannel) {
+        try { sb.removeChannel(realtimeChannel); } catch(e) {}
+    }
+    
+    // Função debounced - quando recebe mudança, espera 1s antes de recarregar
+    // (para agrupar várias mudanças em uma única recarga)
+    const recarregarDebounced = () => {
+        clearTimeout(realtimeTimer);
+        realtimeTimer = setTimeout(async () => {
+            if (isLoading) return;
+            console.log('🔔 Realtime: mudança detectada em outro lugar — sincronizando...');
+            isLoading = true;
+            try {
+                await loadAll(true); // force refresh
+            } finally {
+                isLoading = false;
+            }
+        }, 1000);
+    };
+    
+    realtimeChannel = sb
+        .channel(`cmv-user-${currentUser.id}`)
+        .on('postgres_changes', 
+            { event: '*', schema: 'public', table: 'produtos', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'ingredientes', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'fichas', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'bebidas', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'sobremesas', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'extras', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .on('postgres_changes',
+            { event: '*', schema: 'public', table: 'vendas', filter: `user_id=eq.${currentUser.id}` },
+            recarregarDebounced
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log('🟢 Realtime conectado — mudanças de outros PCs serão sincronizadas automaticamente');
+            }
+        });
+}
+
 async function showApp(user) {
     currentUser = user;
     $('auth-screen').style.display = 'none';
@@ -661,6 +724,9 @@ async function showApp(user) {
         console.log('showApp: dados já carregados, renderizando');
         renderAll();
     }
+    
+    // CORREÇÃO v13.2: ativa sincronização em tempo real após carregar dados
+    setupRealtime();
 }
 
 function showLogin() {
@@ -681,6 +747,11 @@ sb.auth.onAuthStateChange(async (event, session) => {
             showLogin();
         }
     } else if (event === 'SIGNED_OUT') {
+        // Limpar canal realtime ao deslogar
+        if (realtimeChannel) {
+            try { sb.removeChannel(realtimeChannel); } catch(e) {}
+            realtimeChannel = null;
+        }
         showLogin();
     } else if (event === 'TOKEN_REFRESHED') {
         // Token renovado - só atualizar currentUser, NÃO recarregar dados
@@ -721,9 +792,10 @@ document.addEventListener('visibilitychange', async () => {
                 await showApp(session.user);
                 return;
             }
-            // Mesmo usuário: revalida do banco se passou >30s (pode ter editado em outro PC)
+            // CORREÇÃO v13.2: revalida sempre que passar >5s (era 30s)
+            // Garante sincronização rápida entre múltiplos PCs/abas
             const desdeUltima = Date.now() - ultimaSincronizacao;
-            if (desdeUltima > 30000 && !isLoading) {
+            if (desdeUltima > 5000 && !isLoading) {
                 console.log(`🔄 Aba reativada após ${Math.round(desdeUltima/1000)}s — revalidando do banco`);
                 ultimaSincronizacao = Date.now();
                 isLoading = true;
@@ -792,7 +864,7 @@ function queryWithTimeout(makeQuery, ms = 20000, label = '', retries = 1) {
 
 // Cache em localStorage (persiste entre sessões do navegador)
 // TTL curto (1h) — atua como skeleton visual; fetch fresh roda em paralelo
-const CACHE_TTL = 60 * 60 * 1000; // 1h
+const CACHE_TTL = 5 * 60 * 1000; // 5min (era 1h) - reduzido v13.2 para evitar dados desatualizados
 function loadFromCache(userId) {
     try {
         const k = `cmv-cache-${userId}`;
@@ -869,7 +941,7 @@ async function loadAll(forceRefresh = false) {
     // Indicador silencioso quando temos cache e estamos sincronizando
     if (usouCache) mostrarSincronizando(true);
     try {
-        // v13.1.0: queries em LOTES de 4 para não saturar conexões do navegador
+        // v13.2.0: queries em LOTES de 4 para não saturar conexões do navegador
         // (Firefox limita 6 conexões simultâneas por host)
         // Sem retry: com Pro + Compute Micro, se demora >15s é problema real
         const mk = (fn) => () => fn();
@@ -1400,17 +1472,32 @@ function confirmar(tipo, id) {
 
 async function execDel(tabela, id) {
     loading(true);
-    const { error } = await sb.from(tabela).delete().eq('id', id).eq('user_id', currentUser.id);
-    if (error) {
-        toast('Erro: ' + error.message, true);
-    } else {
+    try {
+        const SAVE_TIMEOUT = 15000;
+        const comTimeout = (p) => Promise.race([
+            p,
+            new Promise((_, rej) => setTimeout(() => rej(new Error('Tempo esgotado excluindo. Tente novamente.')), SAVE_TIMEOUT))
+        ]);
+
+        const { error } = await comTimeout(
+            sb.from(tabela).delete().eq('id', id).eq('user_id', currentUser.id)
+        );
+        if (error) throw error;
+
         DB[tabela] = DB[tabela].filter(x => x.id !== id);
         if (tabela === 'produtos') DB.fichas = DB.fichas.filter(f => f.produto_id !== id && f.sub_receita_id !== id);
         if (tabela === 'ingredientes') DB.fichas = DB.fichas.filter(f => f.ingrediente_id !== id);
+
+        // CORREÇÃO v13.2: salvar cache após delete (evitava reaparecer item deletado em reload)
+        salvarCacheAtual();
+
         renderAll();
         toast('Excluído!');
+    } catch(e) {
+        toast('Erro ao excluir: ' + (e?.message || e), true);
+    } finally {
+        loading(false);
     }
-    loading(false);
 }
 
 // ========================================
@@ -2588,11 +2675,11 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
     } catch(e) {}
 })();
 
-// PRE-WARM removido na v13.1.0
+// PRE-WARM removido na v13.2.0
 // Com Supabase Pro + Compute Micro, banco sempre está aquecido. Pre-warm só atrapalhava.
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v13.1.0 - inicializando...');
+console.log('🚀 CMV Control v13.2.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
