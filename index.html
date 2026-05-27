@@ -238,7 +238,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v13.2.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v13.3.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -637,65 +637,72 @@ async function handleLogout() {
 let lastUserId = null;
 let isLoading = false;
 
-// CORREÇÃO v13.2: Realtime subscription para sincronização em tempo real entre PCs
+// v13.3: Realtime com BROADCAST + TRIGGERS (substitui postgres_changes)
+// Mais eficiente: trigger no banco emite só para o canal do dono dos dados
+// Padrão de tópico: user:{user_id}:cmv (canal privado por usuário)
 let realtimeChannel = null;
 let realtimeTimer = null;
+let realtimeReconnectTimer = null;
 
-function setupRealtime() {
+async function setupRealtime() {
     if (!currentUser?.id) return;
+    
+    // Limpa canal anterior
     if (realtimeChannel) {
-        try { sb.removeChannel(realtimeChannel); } catch(e) {}
+        try { await sb.removeChannel(realtimeChannel); } catch(e) {}
+        realtimeChannel = null;
     }
     
-    // Função debounced - quando recebe mudança, espera 1s antes de recarregar
-    // (para agrupar várias mudanças em uma única recarga)
-    const recarregarDebounced = () => {
+    // Sincroniza auth no realtime (necessário para canais privados)
+    try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (session?.access_token) {
+            await sb.realtime.setAuth(session.access_token);
+        }
+    } catch(e) { 
+        console.warn('Realtime setAuth falhou:', e); 
+    }
+    
+    // Debounce: agrupa múltiplas mudanças em 1 só reload
+    const recarregarDebounced = (eventName) => {
         clearTimeout(realtimeTimer);
         realtimeTimer = setTimeout(async () => {
             if (isLoading) return;
-            console.log('🔔 Realtime: mudança detectada em outro lugar — sincronizando...');
+            console.log(`🔔 Realtime [${eventName}]: sincronizando do banco...`);
             isLoading = true;
             try {
-                await loadAll(true); // force refresh
+                await loadAll(true); // force refresh, ignora cache
             } finally {
                 isLoading = false;
             }
-        }, 1000);
+        }, 800);
     };
     
+    // Canal PRIVADO com padrão de tópico user:{id}:cmv
+    const topicName = `user:${currentUser.id}:cmv`;
+    
     realtimeChannel = sb
-        .channel(`cmv-user-${currentUser.id}`)
-        .on('postgres_changes', 
-            { event: '*', schema: 'public', table: 'produtos', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'ingredientes', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'fichas', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'bebidas', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'sobremesas', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'extras', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .on('postgres_changes',
-            { event: '*', schema: 'public', table: 'vendas', filter: `user_id=eq.${currentUser.id}` },
-            recarregarDebounced
-        )
-        .subscribe((status) => {
+        .channel(topicName, { config: { private: true } })
+        // Eventos snake_case emitidos pela trigger SQL: tabela_op
+        // Ex: produtos_insert, fichas_update, vendas_delete, etc.
+        .on('broadcast', { event: '*' }, ({ event, payload }) => {
+            console.log(`📡 broadcast: ${event}`, payload?.table, payload?.operation);
+            recarregarDebounced(event);
+        })
+        .subscribe((status, err) => {
             if (status === 'SUBSCRIBED') {
-                console.log('🟢 Realtime conectado — mudanças de outros PCs serão sincronizadas automaticamente');
+                console.log(`🟢 Realtime conectado (Broadcast) — tópico privado: ${topicName}`);
+                clearTimeout(realtimeReconnectTimer);
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+                console.warn(`⚠️ Realtime status: ${status}`, err);
+                // Reconectar após 5s em caso de erro
+                clearTimeout(realtimeReconnectTimer);
+                realtimeReconnectTimer = setTimeout(() => {
+                    if (currentUser?.id) {
+                        console.log('🔄 Tentando reconectar Realtime...');
+                        setupRealtime();
+                    }
+                }, 5000);
             }
         });
 }
@@ -941,7 +948,7 @@ async function loadAll(forceRefresh = false) {
     // Indicador silencioso quando temos cache e estamos sincronizando
     if (usouCache) mostrarSincronizando(true);
     try {
-        // v13.2.0: queries em LOTES de 4 para não saturar conexões do navegador
+        // v13.3.0: queries em LOTES de 4 para não saturar conexões do navegador
         // (Firefox limita 6 conexões simultâneas por host)
         // Sem retry: com Pro + Compute Micro, se demora >15s é problema real
         const mk = (fn) => () => fn();
@@ -2675,11 +2682,11 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
     } catch(e) {}
 })();
 
-// PRE-WARM removido na v13.2.0
+// PRE-WARM removido na v13.3.0
 // Com Supabase Pro + Compute Micro, banco sempre está aquecido. Pre-warm só atrapalhava.
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v13.2.0 - inicializando...');
+console.log('🚀 CMV Control v13.3.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
