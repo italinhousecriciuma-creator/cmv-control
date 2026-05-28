@@ -238,7 +238,7 @@ td{font-size:0.9rem;}
     <header class="header">
         <div class="header-left">
             <span class="logo">📊 CMV Control</span>
-            <span style="font-size:0.75rem;color:var(--txt3);">v13.3.0</span>
+            <span style="font-size:0.75rem;color:var(--txt3);">v13.4.0</span>
         </div>
         <div class="header-user">
             <span class="user-email" id="user-email"></span>
@@ -948,7 +948,7 @@ async function loadAll(forceRefresh = false) {
     // Indicador silencioso quando temos cache e estamos sincronizando
     if (usouCache) mostrarSincronizando(true);
     try {
-        // v13.3.0: queries em LOTES de 4 para não saturar conexões do navegador
+        // v13.4.0: queries em LOTES de 4 para não saturar conexões do navegador
         // (Firefox limita 6 conexões simultâneas por host)
         // Sem retry: com Pro + Compute Micro, se demora >15s é problema real
         const mk = (fn) => () => fn();
@@ -1266,7 +1266,15 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
 // ========================================
 function abrirModal(id, itemId = null) {
     const form = $(id).querySelector('form');
-    if (form) form.reset();
+    if (form) {
+        form.reset();
+        // CORREÇÃO v13.4: form.reset() NÃO limpa inputs hidden.
+        // Sem isso, o id do último item editado permanecia e o "Novo"
+        // virava UPDATE em vez de INSERT. Limpamos os hidden manualmente.
+        if (!itemId) {
+            form.querySelectorAll('input[type="hidden"]').forEach(h => { h.value = ''; });
+        }
+    }
     if (itemId) preencherForm(id, itemId);
     $(id).classList.add('open');
 }
@@ -2682,11 +2690,11 @@ function cancelarImport(){importData=null;$('import-preview').innerHTML='';fileI
     } catch(e) {}
 })();
 
-// PRE-WARM removido na v13.3.0
+// PRE-WARM removido na v13.4.0
 // Com Supabase Pro + Compute Micro, banco sempre está aquecido. Pre-warm só atrapalhava.
 
 // Init - o onAuthStateChange com 'INITIAL_SESSION' cuida da carga inicial.
-console.log('🚀 CMV Control v13.3.0 - inicializando...');
+console.log('🚀 CMV Control v13.4.0 - inicializando...');
 
 // Fallback: se em 5s não tiver disparado INITIAL_SESSION, força check
 setTimeout(async () => {
