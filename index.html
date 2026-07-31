@@ -437,10 +437,20 @@ let CATEGORIAS = [];
 let TAMANHOS = [];
 const CORES_DISPONIVEIS = ['blue', 'orange', 'pink', 'purple', 'cyan', 'green', 'yellow', 'red', 'gray'];
 
-// Plano Pro (Mercado Pago) — v13.6.0
-const LIMITE_PRODUTOS_FREE = 15;
+// Plano Pro (Mercado Pago) — v13.6.0 (v13.6.1: limite passou a valer por tabela)
+const LIMITE_ITENS_FREE = 1;
 function isPro() {
     return !!perfil && perfil.plano === 'pro' && perfil.plano_status === 'ativo';
+}
+// Retorna true (e já avisa o usuário) se a criação de um item novo deve ser bloqueada
+// pelo limite do plano Free. "quantidadeAtual" é a contagem da tabela/seção específica
+// (produtos, sub-receitas, bebidas, sobremesas, extras e ingredientes contam separado).
+function bloquearPorLimiteFree(quantidadeAtual, modalId) {
+    if (isPro() || quantidadeAtual < LIMITE_ITENS_FREE) return false;
+    toast(`Plano Gratuito permite até ${LIMITE_ITENS_FREE} item por categoria (produtos, bebidas, sobremesas, extras, ingredientes e sub-receitas). Assine o Pro (R$ 49,90/mês) para itens ilimitados.`, true);
+    if (modalId) fecharModal(modalId);
+    document.querySelector('[data-p="config"]').click();
+    return true;
 }
 
 
@@ -1406,7 +1416,6 @@ async function excluirTamanho(id) {
 function renderPlanoInfo() {
     if (!perfil) return;
     const dataStr = perfil.created_at ? new Date(perfil.created_at).toLocaleDateString('pt-BR') : '-';
-    const totalProdutos = DB.produtos.length;
 
     if (isPro()) {
         const vencStr = perfil.mp_proximo_vencimento ? new Date(perfil.mp_proximo_vencimento).toLocaleDateString('pt-BR') : '-';
@@ -1428,13 +1437,13 @@ function renderPlanoInfo() {
 
     $('plano-info').innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div><div style="font-weight:600;">Plano Gratuito</div><div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ${dataStr} • ${totalProdutos}/${LIMITE_PRODUTOS_FREE} produtos usados</div></div>
+            <div><div style="font-weight:600;">Plano Gratuito</div><div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ${dataStr} • limite de ${LIMITE_ITENS_FREE} item por categoria (produtos, sub-receitas, bebidas, sobremesas, extras, ingredientes)</div></div>
             <span class="badge gray">FREE</span>
         </div>
         ${avisoStatus}
         <div style="margin-top:1rem;padding:1rem;background:var(--bg3);border-radius:8px;">
             <div style="font-weight:600;margin-bottom:0.4rem;">🚀 Assine o Pro — R$ 49,90/mês</div>
-            <div style="color:var(--txt2);font-size:0.85rem;margin-bottom:0.75rem;">Produtos ilimitados, importação automática de vendas do iFood/AnotaAi e dashboard completo.</div>
+            <div style="color:var(--txt2);font-size:0.85rem;margin-bottom:0.75rem;">Itens ilimitados em todas as categorias, importação automática de vendas do iFood/AnotaAi e dashboard completo.</div>
             <button class="btn btn-p" id="btn-assinar-pro" onclick="assinarPro()">💳 Assinar agora</button>
         </div>`;
 }
@@ -1744,12 +1753,7 @@ $('form-prod').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('prod-id').value);
     // Limite do plano gratuito só se aplica a produtos NOVOS (id vazio = insert)
-    if (!id && !isPro() && DB.produtos.length >= LIMITE_PRODUTOS_FREE) {
-        toast(`Plano Gratuito permite até ${LIMITE_PRODUTOS_FREE} produtos. Assine o Pro (R$ 49,90/mês) para cadastrar produtos ilimitados.`, true);
-        fecharModal('mod-prod');
-        document.querySelector('[data-p="config"]').click();
-        return;
-    }
+    if (!id && bloquearPorLimiteFree(produtosPratos().length, 'mod-prod')) return;
     const data = {
         nome: $('prod-nome').value,
         cat: $('prod-cat').value,
@@ -1766,6 +1770,7 @@ $('form-prod').onsubmit = async e => {
 $('form-beb').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('beb-id').value);
+    if (!id && bloquearPorLimiteFree(DB.bebidas.length, 'mod-beb')) return;
     const data = { nome: $('beb-nome').value, custo: parseFloat($('beb-custo').value) || 0, preco_ifood: parseFloat($('beb-pif').value) || 0, preco_anota: parseFloat($('beb-pan').value) || 0, user_id: currentUser.id };
     await salvarRegistro({ tabela: 'bebidas', id, data, db: DB.bebidas, modal: 'mod-beb' });
 };
@@ -1773,6 +1778,7 @@ $('form-beb').onsubmit = async e => {
 $('form-sob').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('sob-id').value);
+    if (!id && bloquearPorLimiteFree(DB.sobremesas.length, 'mod-sob')) return;
     const data = { nome: $('sob-nome').value, custo: parseFloat($('sob-custo').value) || 0, preco_ifood: parseFloat($('sob-pif').value) || 0, preco_anota: parseFloat($('sob-pan').value) || 0, user_id: currentUser.id };
     await salvarRegistro({ tabela: 'sobremesas', id, data, db: DB.sobremesas, modal: 'mod-sob' });
 };
@@ -1780,6 +1786,7 @@ $('form-sob').onsubmit = async e => {
 $('form-ext').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('ext-id').value);
+    if (!id && bloquearPorLimiteFree(DB.extras.length, 'mod-ext')) return;
     const data = { nome: $('ext-nome').value, custo: parseFloat($('ext-custo').value) || 0, preco: parseFloat($('ext-preco').value) || 0, user_id: currentUser.id };
     await salvarRegistro({ tabela: 'extras', id, data, db: DB.extras, modal: 'mod-ext' });
 };
@@ -1787,6 +1794,7 @@ $('form-ext').onsubmit = async e => {
 $('form-ing').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('ing-id').value);
+    if (!id && bloquearPorLimiteFree(DB.ingredientes.length, 'mod-ing')) return;
     const data = { nome: $('ing-nome').value, un: $('ing-un').value, custo: parseFloat($('ing-custo').value) || 0, forn: $('ing-forn').value, user_id: currentUser.id };
     const ok = await salvarRegistro({ tabela: 'ingredientes', id, data, db: DB.ingredientes, modal: 'mod-ing' });
     // Quando edita ingrediente, recalcula custo dos produtos que o usam
@@ -2251,6 +2259,7 @@ function excluirSubReceitaAtual() {
 $('form-sub').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('sub-id').value);
+    if (!id && bloquearPorLimiteFree(subReceitas().length, 'mod-sub')) return;
     const data = {
         nome: $('sub-nome').value,
         tipo: 'sub_receita',
