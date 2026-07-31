@@ -1924,13 +1924,26 @@ function renderVendas() {
     $('sel-venda').innerHTML = '<option value="">Selecione...</option>' + DB.vendas.map(v => `<option value="${v.id}">${v.mes}/${v.ano} - ${v.cardapio === 'ifood' ? 'iFood' : 'AnotaAi'} - ${R$(v.total_fat)}</option>`).join('');
 }
 
+// Repopula os selects da tela de Fichas/Sub-Receitas SEM perder o que já estava
+// selecionado — antes essa função resetava tudo pra "Selecione...", fazendo o
+// produto escolhido "sumir" toda vez que um ingrediente era adicionado à ficha.
+function repopularPreservandoSelecao(id, htmlOptions) {
+    const el = $(id);
+    if (!el) return;
+    const atual = el.value;
+    el.innerHTML = htmlOptions;
+    // Só restaura se o valor ainda existir entre as opções novas (evita ficar
+    // "preso" a um item que foi excluído nesse meio tempo)
+    if (atual && Array.from(el.options).some(o => o.value === atual)) el.value = atual;
+}
+
 function renderFichaSelects() {
-    $('ficha-prod').innerHTML = '<option value="">Selecione...</option>' + produtosPratos().map(p => `<option value="${p.id}">${p.nome} (${p.tam || 'G'})</option>`).join('');
-    $('ficha-ing').innerHTML = '<option value="">Selecione...</option>' + DB.ingredientes.map(i => `<option value="${i.id}">${i.nome} — ${R$(i.custo)}/${i.un}</option>`).join('');
-    $('ficha-sub').innerHTML = '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome} (${s.rendimento_un || 'g'})</option>`).join('');
-    $('sub-sel').innerHTML = '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
-    $('sub-ing').innerHTML = '<option value="">Selecione...</option>' + DB.ingredientes.map(i => `<option value="${i.id}">${i.nome} — ${R$(i.custo)}/${i.un}</option>`).join('');
-    $('sub-subi').innerHTML = '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+    repopularPreservandoSelecao('ficha-prod', '<option value="">Selecione...</option>' + produtosPratos().map(p => `<option value="${p.id}">${p.nome} (${p.tam || 'G'})</option>`).join(''));
+    repopularPreservandoSelecao('ficha-ing', '<option value="">Selecione...</option>' + DB.ingredientes.map(i => `<option value="${i.id}">${i.nome} — ${R$(i.custo)}/${i.un}</option>`).join(''));
+    repopularPreservandoSelecao('ficha-sub', '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome} (${s.rendimento_un || 'g'})</option>`).join(''));
+    repopularPreservandoSelecao('sub-sel', '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome}</option>`).join(''));
+    repopularPreservandoSelecao('sub-ing', '<option value="">Selecione...</option>' + DB.ingredientes.map(i => `<option value="${i.id}">${i.nome} — ${R$(i.custo)}/${i.un}</option>`).join(''));
+    repopularPreservandoSelecao('sub-subi', '<option value="">Selecione...</option>' + subReceitas().map(s => `<option value="${s.id}">${s.nome}</option>`).join(''));
 }
 
 function renderRanking() {
