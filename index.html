@@ -360,6 +360,21 @@ td{font-size:0.9rem;}
                     <div class="field"><label>Imposto (%)</label><input type="number" id="cfg-imposto" step="0.1" min="0" max="100" value="0"></div>
                 </div>
                 <button class="btn btn-p" onclick="salvarTaxas()">💾 Salvar Taxas</button>
+
+                <div class="section-title" style="margin-top:1.5rem;">🗂️ Categorias de Produtos</div>
+                <div class="alert info" style="font-size:0.8rem;">Usadas no cadastro manual de produtos (Dashboard/Produtos e Análise). A importação automática de vendas continua reconhecendo só Macarrão/Risoto/Nhoque/Combo.</div>
+                <div id="cfg-lista-cat" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin:0.75rem 0;"></div>
+                <div class="form-row" style="max-width:500px;align-items:flex-end;">
+                    <div class="field" style="flex:1;"><label>Nova categoria</label><input type="text" id="cfg-nova-cat" placeholder="Ex: Saladas" maxlength="40"></div>
+                    <button type="button" class="btn btn-p" onclick="adicionarCategoria()" style="height:fit-content;">+ Adicionar</button>
+                </div>
+
+                <div class="section-title" style="margin-top:1.5rem;">📏 Tamanhos de Produtos</div>
+                <div id="cfg-lista-tam" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin:0.75rem 0;"></div>
+                <div class="form-row" style="max-width:500px;align-items:flex-end;">
+                    <div class="field" style="flex:1;"><label>Novo tamanho</label><input type="text" id="cfg-novo-tam" placeholder="Ex: Box M" maxlength="20"></div>
+                    <button type="button" class="btn btn-p" onclick="adicionarTamanho()" style="height:fit-content;">+ Adicionar</button>
+                </div>
                 
                 <div class="section-title" style="margin-top:1.5rem;">📋 Meu Plano</div>
                 <div id="plano-info" style="padding:1rem;background:var(--bg);border-radius:8px;"></div>
@@ -405,6 +420,13 @@ let filterText = {};
 let chartCMV = null;
 let ultimaSincronizacao = 0;
 
+// Categorias e Tamanhos de produtos — agora editáveis pelo usuário (v13.5.0)
+// CATEGORIAS/TAMANHOS carregam do Supabase; se vazio, semeamos os padrões antigos
+// automaticamente (ver seedCategoriasTamanhosPadrao()) pra nada quebrar pra quem já usava o app.
+let CATEGORIAS = [];
+let TAMANHOS = [];
+const CORES_DISPONIVEIS = ['blue', 'orange', 'pink', 'purple', 'cyan', 'green', 'yellow', 'red', 'gray'];
+
 
 // ========================================
 // UTILS
@@ -415,8 +437,34 @@ const pct = v => (parseFloat(v) || 0).toFixed(1) + '%';
 const fmtQtd = v => { const n = parseFloat(v) || 0; return n % 1 === 0 ? n.toString() : n.toFixed(2); };
 const cmvColor = v => v <= 25 ? 'var(--green)' : v <= 35 ? 'var(--yellow)' : 'var(--red)';
 const cmvCls = v => v <= 25 ? 'green' : v <= 35 ? 'yellow' : 'red';
-const catLabels = { macarrao: 'Macarrão', risoto: 'Risoto', nhoque: 'Nhoque', combo: 'Combo' };
-const catBadge = { macarrao: 'blue', risoto: 'orange', nhoque: 'pink', combo: 'purple' };
+// Fallback (mantido pro parser de importação automática, que ainda reconhece só essas 4 categorias fixas no texto)
+const catLabelsFallback = { macarrao: 'Macarrão', risoto: 'Risoto', nhoque: 'Nhoque', combo: 'Combo' };
+const catBadgeFallback = { macarrao: 'blue', risoto: 'orange', nhoque: 'pink', combo: 'purple' };
+const tamLabelsFallback = { P: 'Box P', G: 'Box G' };
+
+// Cadastro manual de produtos agora usa CATEGORIAS/TAMANHOS dinâmicos (editáveis em Config).
+// Essas funções sempre têm um fallback, então nunca quebram mesmo se a lista ainda não carregou.
+function catLabel(id) {
+    const c = CATEGORIAS.find(x => x.id === id);
+    return c ? c.nome : (catLabelsFallback[id] || id || '-');
+}
+function catBadgeClass(id) {
+    const c = CATEGORIAS.find(x => x.id === id);
+    return c ? c.cor : (catBadgeFallback[id] || 'cyan');
+}
+function tamLabel(id) {
+    const t = TAMANHOS.find(x => x.id === id);
+    return t ? t.nome : (tamLabelsFallback[id] || id || '-');
+}
+function slugify(nome) {
+    const base = (nome || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return base || 'item';
+}
+function proximaCorDisponivel() {
+    const usadas = new Set(CATEGORIAS.map(c => c.cor));
+    return CORES_DISPONIVEIS.find(c => !usadas.has(c)) || CORES_DISPONIVEIS[CATEGORIAS.length % CORES_DISPONIVEIS.length];
+}
 
 function toast(msg, isError = false) {
     const t = $('toast');
@@ -932,8 +980,13 @@ async function loadAll(forceRefresh = false) {
             DB.ingredientes = cached.ingredientes || [];
             DB.fichas = cached.fichas || [];
             DB.vendas = cached.vendas || [];
+            CATEGORIAS = cached.categorias || [];
+            TAMANHOS = cached.tamanhos || [];
             DB.produtos.forEach(p => { p.custoFicha = calcCustoProduto(p.id); });
             carregarTaxas();
+            popularSelectsCatTam();
+            renderConfigCategorias();
+            renderConfigTamanhos();
             renderAll();
             loading(false);
             usouCache = true;
@@ -971,6 +1024,21 @@ async function loadAll(forceRefresh = false) {
             queryWithTimeout(mk(() => sb.from('vendas').select('id, mes, ano, cardapio, total_qtd, total_fat, total_custo, created_at').eq('user_id', currentUser.id).order('created_at', { ascending: false })), TIMEOUT, 'vendas', 0)
         ]);
         const [extrasRes, ingredientesRes, fichasRes, vendasRes] = lote2;
+        
+        // LOTE 3 — categorias/tamanhos editáveis (v13.5.0, 2 queries leves)
+        const lote3 = await Promise.all([
+            queryWithTimeout(mk(() => sb.from('categorias').select('*').eq('user_id', currentUser.id).order('created_at')), TIMEOUT, 'categorias', 0),
+            queryWithTimeout(mk(() => sb.from('tamanhos').select('*').eq('user_id', currentUser.id).order('created_at')), TIMEOUT, 'tamanhos', 0)
+        ]);
+        const [categoriasRes, tamanhosRes] = lote3;
+        if (categoriasRes.data !== null) CATEGORIAS = categoriasRes.data || [];
+        if (tamanhosRes.data !== null) TAMANHOS = tamanhosRes.data || [];
+        // Primeiro acesso (ou usuário antigo antes dessa versão): semeia os padrões de sempre
+        if (categoriasRes.data !== null && categoriasRes.data.length === 0) await seedCategoriasPadrao();
+        if (tamanhosRes.data !== null && tamanhosRes.data.length === 0) await seedTamanhosPadrao();
+        popularSelectsCatTam();
+        renderConfigCategorias();
+        renderConfigTamanhos();
         
         const t = Date.now() - startTime;
         console.log(`✓ loadAll: queries em ${t}ms`);
@@ -1030,7 +1098,8 @@ async function loadAll(forceRefresh = false) {
             saveToCache(currentUser.id, {
                 perfil, produtos: DB.produtos, bebidas: DB.bebidas,
                 sobremesas: DB.sobremesas, extras: DB.extras,
-                ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas
+                ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas,
+                categorias: CATEGORIAS, tamanhos: TAMANHOS
             });
             console.log('✓ Cache salvo');
             mostrarSincronizando(false);
@@ -1142,6 +1211,164 @@ function carregarTaxas() {
         }
     } catch(e) {
         console.error('Erro carregarTaxas:', e);
+    }
+}
+
+// ========================================
+// CATEGORIAS E TAMANHOS (editáveis pelo usuário) — v13.5.0
+// ========================================
+
+// Semeia as 4 categorias que o app sempre teve, só na primeira vez que o usuário
+// carrega essa versão (evita quebrar quem já tinha produtos com esses valores).
+async function seedCategoriasPadrao() {
+    try {
+        const padrao = [
+            { id: 'macarrao', nome: 'Macarrão', cor: 'blue' },
+            { id: 'risoto', nome: 'Risoto', cor: 'orange' },
+            { id: 'nhoque', nome: 'Nhoque', cor: 'pink' },
+            { id: 'combo', nome: 'Combo', cor: 'purple' }
+        ].map(c => ({ ...c, user_id: currentUser.id }));
+        const { data, error } = await sb.from('categorias').insert(padrao).select();
+        if (error) throw error;
+        CATEGORIAS = data || padrao;
+    } catch (e) {
+        console.error('Erro ao semear categorias padrão:', e);
+        // Mesmo se falhar ao gravar, mantém funcionando em memória com os padrões
+        CATEGORIAS = ['macarrao', 'risoto', 'nhoque', 'combo'].map(id => ({ id, nome: catLabelsFallback[id], cor: catBadgeFallback[id] }));
+    }
+}
+
+async function seedTamanhosPadrao() {
+    try {
+        const padrao = [
+            { id: 'P', nome: 'Box P' },
+            { id: 'G', nome: 'Box G' }
+        ].map(t => ({ ...t, user_id: currentUser.id }));
+        const { data, error } = await sb.from('tamanhos').insert(padrao).select();
+        if (error) throw error;
+        TAMANHOS = data || padrao;
+    } catch (e) {
+        console.error('Erro ao semear tamanhos padrão:', e);
+        TAMANHOS = [{ id: 'P', nome: 'Box P' }, { id: 'G', nome: 'Box G' }];
+    }
+}
+
+// Repopula os <select> de categoria/tamanho no formulário de Produto com os dados atuais
+function popularSelectsCatTam() {
+    const selCat = $('prod-cat'), selTam = $('prod-tam');
+    if (selCat) {
+        const atual = selCat.value;
+        selCat.innerHTML = CATEGORIAS.map(c => `<option value="${c.id}">${c.nome}</option>`).join('') || '<option value="">Nenhuma categoria — crie uma em Config</option>';
+        if (CATEGORIAS.some(c => c.id === atual)) selCat.value = atual;
+    }
+    if (selTam) {
+        const atual = selTam.value;
+        selTam.innerHTML = TAMANHOS.map(t => `<option value="${t.id}">${t.nome}</option>`).join('') || '<option value="">Nenhum tamanho — crie um em Config</option>';
+        if (TAMANHOS.some(t => t.id === atual)) selTam.value = atual;
+    }
+}
+
+function renderConfigCategorias() {
+    const el = $('cfg-lista-cat');
+    if (!el) return;
+    el.innerHTML = CATEGORIAS.length === 0
+        ? '<span style="color:var(--txt3);font-size:0.85rem;">Nenhuma categoria cadastrada.</span>'
+        : CATEGORIAS.map(c => `<span class="badge ${c.cor}" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 0.6rem;">${c.nome}<button type="button" title="Excluir categoria" onclick="confirmar('catg','${c.id}')" style="background:none;border:none;color:inherit;cursor:pointer;font-size:0.85rem;line-height:1;padding:0;">×</button></span>`).join(' ');
+}
+
+function renderConfigTamanhos() {
+    const el = $('cfg-lista-tam');
+    if (!el) return;
+    el.innerHTML = TAMANHOS.length === 0
+        ? '<span style="color:var(--txt3);font-size:0.85rem;">Nenhum tamanho cadastrado.</span>'
+        : TAMANHOS.map(t => `<span class="badge blue" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.4rem 0.6rem;">${t.nome}<button type="button" title="Excluir tamanho" onclick="confirmar('tamn','${t.id}')" style="background:none;border:none;color:inherit;cursor:pointer;font-size:0.85rem;line-height:1;padding:0;">×</button></span>`).join(' ');
+}
+
+async function adicionarCategoria() {
+    const input = $('cfg-nova-cat');
+    const nome = (input?.value || '').trim();
+    if (!nome) { toast('Digite um nome para a categoria.', true); return; }
+
+    let id = slugify(nome);
+    // Evita colisão de id dentro da lista do próprio usuário
+    let sufixo = 2;
+    while (CATEGORIAS.some(c => c.id === id)) { id = `${slugify(nome)}_${sufixo++}`; }
+
+    const cor = proximaCorDisponivel();
+    loading(true);
+    try {
+        const { data, error } = await sb.from('categorias').insert({ id, nome, cor, user_id: currentUser.id }).select().single();
+        if (error) throw error;
+        CATEGORIAS.push(data);
+        input.value = '';
+        popularSelectsCatTam();
+        renderConfigCategorias();
+        toast('Categoria criada!');
+    } catch (e) {
+        toast('Erro ao criar categoria: ' + (e?.message || 'desconhecido'), true);
+    } finally {
+        loading(false);
+    }
+}
+
+async function adicionarTamanho() {
+    const input = $('cfg-novo-tam');
+    const nome = (input?.value || '').trim();
+    if (!nome) { toast('Digite um nome para o tamanho.', true); return; }
+
+    let id = slugify(nome).toUpperCase().slice(0, 12);
+    let sufixo = 2;
+    while (TAMANHOS.some(t => t.id === id)) { id = `${slugify(nome).toUpperCase().slice(0, 10)}_${sufixo++}`; }
+
+    loading(true);
+    try {
+        const { data, error } = await sb.from('tamanhos').insert({ id, nome, user_id: currentUser.id }).select().single();
+        if (error) throw error;
+        TAMANHOS.push(data);
+        input.value = '';
+        popularSelectsCatTam();
+        renderConfigTamanhos();
+        toast('Tamanho criado!');
+    } catch (e) {
+        toast('Erro ao criar tamanho: ' + (e?.message || 'desconhecido'), true);
+    } finally {
+        loading(false);
+    }
+}
+
+async function excluirCategoria(id) {
+    const emUso = DB.produtos.some(p => p.cat === id);
+    if (emUso) { toast('Essa categoria está em uso por um ou mais produtos. Mude a categoria deles antes de excluir.', true); return; }
+    loading(true);
+    try {
+        const { error } = await sb.from('categorias').delete().eq('id', id).eq('user_id', currentUser.id);
+        if (error) throw error;
+        CATEGORIAS = CATEGORIAS.filter(c => c.id !== id);
+        popularSelectsCatTam();
+        renderConfigCategorias();
+        toast('Categoria excluída.');
+    } catch (e) {
+        toast('Erro ao excluir categoria: ' + (e?.message || 'desconhecido'), true);
+    } finally {
+        loading(false);
+    }
+}
+
+async function excluirTamanho(id) {
+    const emUso = DB.produtos.some(p => p.tam === id);
+    if (emUso) { toast('Esse tamanho está em uso por um ou mais produtos. Mude o tamanho deles antes de excluir.', true); return; }
+    loading(true);
+    try {
+        const { error } = await sb.from('tamanhos').delete().eq('id', id).eq('user_id', currentUser.id);
+        if (error) throw error;
+        TAMANHOS = TAMANHOS.filter(t => t.id !== id);
+        popularSelectsCatTam();
+        renderConfigTamanhos();
+        toast('Tamanho excluído.');
+    } catch (e) {
+        toast('Erro ao excluir tamanho: ' + (e?.message || 'desconhecido'), true);
+    } finally {
+        loading(false);
     }
 }
 
@@ -1412,7 +1639,8 @@ function salvarCacheAtual() {
         saveToCache(currentUser.id, {
             perfil, produtos: DB.produtos, bebidas: DB.bebidas,
             sobremesas: DB.sobremesas, extras: DB.extras,
-            ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas
+            ingredientes: DB.ingredientes, fichas: DB.fichas, vendas: DB.vendas,
+            categorias: CATEGORIAS, tamanhos: TAMANHOS
         });
     } catch(e) { console.warn('Falha ao salvar cache:', e); }
 }
@@ -1476,7 +1704,9 @@ function confirmar(tipo, id) {
         sob: { title: 'Excluir?', text: 'Ação irreversível.', fn: () => execDel('sobremesas', id) },
         ext: { title: 'Excluir?', text: 'Ação irreversível.', fn: () => execDel('extras', id) },
         ing: { title: 'Excluir?', text: 'Será removido das fichas.', fn: () => execDel('ingredientes', id) },
-        venda: { title: 'Excluir?', text: 'Dados serão perdidos.', fn: () => execDel('vendas', id) }
+        venda: { title: 'Excluir?', text: 'Dados serão perdidos.', fn: () => execDel('vendas', id) },
+        catg: { title: 'Excluir categoria?', text: 'Só é possível se nenhum produto estiver usando essa categoria.', fn: () => excluirCategoria(id) },
+        tamn: { title: 'Excluir tamanho?', text: 'Só é possível se nenhum produto estiver usando esse tamanho.', fn: () => excluirTamanho(id) }
     }[tipo];
     $('conf-icon').textContent = '🗑️';
     $('conf-title').textContent = cfg.title;
@@ -1552,7 +1782,7 @@ function renderProd() {
         const cmvIf = calcCMV(custoIng, p.preco_ifood, true);
         const cmvAn = calcCMV(custoIng, p.preco_anota, false);
         const hasFicha = DB.fichas.some(f => f.produto_id === p.id);
-        return `<tr><td><strong>${p.nome}</strong></td><td><span class="badge ${catBadge[p.cat] || 'cyan'}">${catLabels[p.cat] || p.cat}</span></td><td><span class="badge ${p.tam === 'P' ? 'gray' : 'blue'}">${p.tam || 'G'}</span></td><td class="mono">${custoIng > 0 ? R$(custoIng) : '-'}${hasFicha ? '<span class="custo-auto">auto</span>' : ''}</td><td class="mono">${R$(p.preco_ifood)}</td><td class="mono">${R$(p.preco_anota)}</td><td><span class="badge ${cmvCls(cmvIf)}">${pct(cmvIf)}</span></td><td><span class="badge ${cmvCls(cmvAn)}">${pct(cmvAn)}</span></td><td class="actions"><button class="btn btn-e btn-sm" onclick="abrirModal('mod-prod',${p.id})">✏️</button><button class="btn btn-d btn-sm" onclick="confirmar('prod',${p.id})">🗑️</button></td></tr>`;
+        return `<tr><td><strong>${p.nome}</strong></td><td><span class="badge ${catBadgeClass(p.cat)}">${catLabel(p.cat)}</span></td><td><span class="badge ${p.tam === 'P' ? 'gray' : 'blue'}">${tamLabel(p.tam || 'G')}</span></td><td class="mono">${custoIng > 0 ? R$(custoIng) : '-'}${hasFicha ? '<span class="custo-auto">auto</span>' : ''}</td><td class="mono">${R$(p.preco_ifood)}</td><td class="mono">${R$(p.preco_anota)}</td><td><span class="badge ${cmvCls(cmvIf)}">${pct(cmvIf)}</span></td><td><span class="badge ${cmvCls(cmvAn)}">${pct(cmvAn)}</span></td><td class="actions"><button class="btn btn-e btn-sm" onclick="abrirModal('mod-prod',${p.id})">✏️</button><button class="btn btn-d btn-sm" onclick="confirmar('prod',${p.id})">🗑️</button></td></tr>`;
     }).join('');
 }
 
@@ -1599,7 +1829,7 @@ function renderRanking() {
         return { ...p, custoIng, cmv: calcCMV(custoIng, p.preco_ifood, true) };
     }).filter(p => p.custoIng > 0 && p.preco_ifood > 0).sort((a, b) => b.cmv - a.cmv).slice(0, 10);
     
-    $('tbl-ranking').innerHTML = prods.length === 0 ? '<tr><td colspan="5"><div class="empty">Cadastre fichas</div></td></tr>' : prods.map(p => `<tr><td><strong>${p.nome}</strong></td><td><span class="badge ${catBadge[p.cat] || 'cyan'}">${catLabels[p.cat] || '-'}</span></td><td class="mono">${R$(p.custoIng)}</td><td class="mono">${R$(p.preco_ifood)}</td><td><span class="badge ${cmvCls(p.cmv)}">${pct(p.cmv)}</span></td></tr>`).join('');
+    $('tbl-ranking').innerHTML = prods.length === 0 ? '<tr><td colspan="5"><div class="empty">Cadastre fichas</div></td></tr>' : prods.map(p => `<tr><td><strong>${p.nome}</strong></td><td><span class="badge ${catBadgeClass(p.cat)}">${catLabel(p.cat)}</span></td><td class="mono">${R$(p.custoIng)}</td><td class="mono">${R$(p.preco_ifood)}</td><td><span class="badge ${cmvCls(p.cmv)}">${pct(p.cmv)}</span></td></tr>`).join('');
 }
 
 function atualizarDash() {
@@ -1622,7 +1852,16 @@ function renderChartCMV() {
         const canvas = $('chart-cmv-cat');
         if (!canvas) return;
         
-        const cats = ['macarrao', 'risoto', 'nhoque', 'combo'];
+        // v13.5.0: categorias agora são dinâmicas. Mostramos só as que têm produto cadastrado
+        // (na ordem em que aparecem em CATEGORIAS), e incluímos categorias "órfãs" no fim
+        // (caso raro de produto apontando pra categoria já excluída em outro dispositivo).
+        const catsComProduto = new Set(produtosPratos().map(p => p.cat));
+        let cats = CATEGORIAS.length > 0
+            ? CATEGORIAS.map(c => c.id).filter(id => catsComProduto.has(id))
+            : ['macarrao', 'risoto', 'nhoque', 'combo']; // fallback antes do primeiro load
+        catsComProduto.forEach(id => { if (!cats.includes(id)) cats.push(id); });
+        if (cats.length === 0) { if (chartCMV) { chartCMV.destroy(); chartCMV = null; } return; }
+
         const data = cats.map(cat => {
             const prods = produtosPratos().filter(p => p.cat === cat && (p.custoFicha || calcCustoProduto(p.id)) > 0);
             if (prods.length === 0) return 0;
@@ -1634,7 +1873,7 @@ function renderChartCMV() {
         chartCMV = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: cats.map(c => catLabels[c]),
+                labels: cats.map(c => catLabel(c)),
                 datasets: [{
                     data: data,
                     backgroundColor: data.map(v => v <= 25 ? 'rgba(34,197,94,0.8)' : v <= 35 ? 'rgba(234,179,8,0.8)' : 'rgba(239,68,68,0.8)'),
