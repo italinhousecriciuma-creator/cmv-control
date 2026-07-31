@@ -319,7 +319,17 @@ td{font-size:0.9rem;}
         <div class="page" id="p-fichas"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📋 Fichas Técnicas</div><div class="alert info">💡 O custo é calculado automaticamente pela ficha.</div><div class="field" style="max-width:400px;"><label>Produto</label><select id="ficha-prod" onchange="carregarFicha()"></select></div><div id="ficha-area" style="display:none;margin-top:1rem;"><div style="background:var(--bg3);border-radius:10px;padding:1rem;"><div style="font-size:0.95rem;font-weight:600;margin-bottom:0.75rem;">➕ Adicionar Item</div><div style="display:flex;gap:0.4rem;margin-bottom:0.6rem;"><button type="button" class="btn btn-sm tipo-tab active" data-tipo="ing" onclick="setTipoItemFicha('ing')">🧅 Ingrediente</button><button type="button" class="btn btn-sm tipo-tab" data-tipo="sub" onclick="setTipoItemFicha('sub')">🧪 Sub-Receita</button></div><div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;"><div class="field" id="ficha-ing-wrap" style="flex:2;min-width:200px;margin:0;"><label>Ingrediente</label><select id="ficha-ing"></select></div><div class="field" id="ficha-sub-wrap" style="flex:2;min-width:200px;margin:0;display:none;"><label>Sub-Receita</label><select id="ficha-sub"></select></div><div class="field" style="width:100px;margin:0;"><label>Qtd</label><input type="number" id="ficha-qtd" placeholder="150" step="1" min="0"></div><div class="field" style="width:70px;margin:0;"><label>Un</label><select id="ficha-un"><option selected>g</option><option>ml</option><option>un</option></select></div><button class="btn btn-p" onclick="addIngFicha()">+ Add</button></div><div class="ing-list" id="ficha-list"></div></div><div class="res-box" style="margin-top:1rem;"><div class="res-item"><div class="lbl">Custo</div><div class="val" style="color:var(--green);" id="f-custo">R$ 0</div></div><div class="res-item"><div class="lbl">CMV iFood</div><div class="val" id="f-cmv-if">0%</div></div><div class="res-item"><div class="lbl">CMV AnotaAi</div><div class="val" id="f-cmv-an">0%</div></div></div></div></div></div>
         
         <!-- IMPORTAR -->
-        <div class="page" id="p-importar"><div class="card"><div class="card-title" style="margin-bottom:1rem;">📥 Importar Vendas (Excel)</div><div class="alert info">💡 Exporte "Itens Vendidos" do iFood/AnotaAi em formato Excel (.xlsx)</div><div class="upload-box" id="upload-box" ><div class="upload-icon">📄</div><div class="upload-text">Clique para selecionar arquivo</div><div id="upload-file" style="margin-top:0.5rem;color:var(--green);font-weight:500;"></div></div><input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;" ><div id="import-preview" style="margin-top:1rem;"></div></div></div>
+        <div class="page" id="p-importar"><div class="card">
+            <div id="importar-conteudo">
+                <div class="card-title" style="margin-bottom:1rem;">📥 Importar Vendas (Excel)</div><div class="alert info">💡 Exporte "Itens Vendidos" do iFood/AnotaAi em formato Excel (.xlsx)</div><div class="upload-box" id="upload-box" ><div class="upload-icon">📄</div><div class="upload-text">Clique para selecionar arquivo</div><div id="upload-file" style="margin-top:0.5rem;color:var(--green);font-weight:500;"></div></div><input type="file" id="file-input" accept=".xlsx,.xls" style="display:none;" ><div id="import-preview" style="margin-top:1rem;"></div>
+            </div>
+            <div id="importar-bloqueado" style="display:none;text-align:center;padding:2rem 1rem;">
+                <div style="font-size:2.5rem;margin-bottom:0.75rem;">🔒</div>
+                <div style="font-weight:600;margin-bottom:0.4rem;">Importação automática é um recurso do Plano Pro</div>
+                <div style="color:var(--txt2);font-size:0.9rem;margin-bottom:1rem;">Assine por R$ 49,90/mês para importar suas vendas do iFood/AnotaAi automaticamente.</div>
+                <button class="btn btn-p" onclick="document.querySelector('[data-p=config]').click()">Ver plano Pro</button>
+            </div>
+        </div></div>
         
         <!-- ANÁLISE -->
         <div class="page" id="p-analise">
@@ -426,6 +436,12 @@ let ultimaSincronizacao = 0;
 let CATEGORIAS = [];
 let TAMANHOS = [];
 const CORES_DISPONIVEIS = ['blue', 'orange', 'pink', 'purple', 'cyan', 'green', 'yellow', 'red', 'gray'];
+
+// Plano Pro (Mercado Pago) — v13.6.0
+const LIMITE_PRODUTOS_FREE = 15;
+function isPro() {
+    return !!perfil && perfil.plano === 'pro' && perfil.plano_status === 'ativo';
+}
 
 
 // ========================================
@@ -1205,9 +1221,7 @@ function carregarTaxas() {
             $('cfg-imposto').value = perfil.imposto ?? 0;
             $('cfg-restaurante').value = perfil.restaurante_nome || '';
             
-            const planoLabels = { free: 'Gratuito', basico: 'Básico', pro: 'Profissional' };
-            const dataStr = perfil.created_at ? new Date(perfil.created_at).toLocaleDateString('pt-BR') : '-';
-            $('plano-info').innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;"><div><div style="font-weight:600;">Plano ' + (planoLabels[perfil.plano] || 'Gratuito') + '</div><div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ' + dataStr + '</div></div><span class="badge ' + (perfil.plano === 'pro' ? 'green' : perfil.plano === 'basico' ? 'blue' : 'gray') + '">' + ((perfil.plano || 'free').toUpperCase()) + '</span></div>';
+            renderPlanoInfo();
         }
     } catch(e) {
         console.error('Erro carregarTaxas:', e);
@@ -1265,6 +1279,20 @@ function popularSelectsCatTam() {
         const atual = selTam.value;
         selTam.innerHTML = TAMANHOS.map(t => `<option value="${t.id}">${t.nome}</option>`).join('') || '<option value="">Nenhum tamanho — crie um em Config</option>';
         if (TAMANHOS.some(t => t.id === atual)) selTam.value = atual;
+    }
+    // Filtros da listagem de Produtos (fil-cat/fil-tam) — mantêm a opção "Todas/Todos"
+    // e preservam o filtro que o usuário já tinha selecionado, se ele ainda existir.
+    const filCat = $('fil-cat');
+    if (filCat) {
+        const atual = filCat.value;
+        filCat.innerHTML = '<option value="">Todas Cat.</option>' + CATEGORIAS.map(c => `<option value="${c.id}">${c.nome}</option>`).join('');
+        if (!atual || CATEGORIAS.some(c => c.id === atual)) filCat.value = atual;
+    }
+    const filTam = $('fil-tam');
+    if (filTam) {
+        const atual = filTam.value;
+        filTam.innerHTML = '<option value="">Todos Tam.</option>' + TAMANHOS.map(t => `<option value="${t.id}">${t.nome}</option>`).join('');
+        if (!atual || TAMANHOS.some(t => t.id === atual)) filTam.value = atual;
     }
 }
 
@@ -1370,6 +1398,73 @@ async function excluirTamanho(id) {
     } finally {
         loading(false);
     }
+}
+
+// ========================================
+// PLANO PRO (Mercado Pago) — v13.6.0
+// ========================================
+function renderPlanoInfo() {
+    if (!perfil) return;
+    const dataStr = perfil.created_at ? new Date(perfil.created_at).toLocaleDateString('pt-BR') : '-';
+    const totalProdutos = DB.produtos.length;
+
+    if (isPro()) {
+        const vencStr = perfil.mp_proximo_vencimento ? new Date(perfil.mp_proximo_vencimento).toLocaleDateString('pt-BR') : '-';
+        $('plano-info').innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div><div style="font-weight:600;">Plano Profissional</div><div style="color:var(--txt3);font-size:0.85rem;">Próxima cobrança: ${vencStr} • R$ 49,90/mês</div></div>
+                <span class="badge green">PRO</span>
+            </div>`;
+        return;
+    }
+
+    // Plano Free (ou Pro com pagamento atrasado/cancelado — perde o acesso Pro até regularizar)
+    let avisoStatus = '';
+    if (perfil.plano === 'pro' && perfil.plano_status === 'atrasado') {
+        avisoStatus = '<div class="alert" style="background:rgba(249,115,22,0.15);border:1px solid var(--orange);color:var(--orange);margin-top:0.75rem;">⚠️ Seu pagamento não foi confirmado. Regularize para não perder o acesso Pro.</div>';
+    } else if (perfil.plano === 'pro' && perfil.plano_status === 'cancelado') {
+        avisoStatus = '<div class="alert" style="background:rgba(239,68,68,0.15);border:1px solid var(--red);color:var(--red);margin-top:0.75rem;">Sua assinatura Pro foi cancelada.</div>';
+    }
+
+    $('plano-info').innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><div style="font-weight:600;">Plano Gratuito</div><div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ${dataStr} • ${totalProdutos}/${LIMITE_PRODUTOS_FREE} produtos usados</div></div>
+            <span class="badge gray">FREE</span>
+        </div>
+        ${avisoStatus}
+        <div style="margin-top:1rem;padding:1rem;background:var(--bg3);border-radius:8px;">
+            <div style="font-weight:600;margin-bottom:0.4rem;">🚀 Assine o Pro — R$ 49,90/mês</div>
+            <div style="color:var(--txt2);font-size:0.85rem;margin-bottom:0.75rem;">Produtos ilimitados, importação automática de vendas do iFood/AnotaAi e dashboard completo.</div>
+            <button class="btn btn-p" id="btn-assinar-pro" onclick="assinarPro()">💳 Assinar agora</button>
+        </div>`;
+}
+
+async function assinarPro() {
+    const btn = $('btn-assinar-pro');
+    if (btn) { btn.disabled = true; btn.textContent = 'Gerando link de pagamento...'; }
+    try {
+        const resp = await fetch('/api/mercadopago/criar-assinatura', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUser.id, email: currentUser.email })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.init_point) throw new Error(data?.error || 'Não foi possível gerar o link de pagamento.');
+        window.location.href = data.init_point; // leva o usuário pro checkout hospedado do Mercado Pago
+    } catch (e) {
+        toast('Erro ao iniciar assinatura: ' + (e?.message || 'tente novamente'), true);
+        if (btn) { btn.disabled = false; btn.textContent = '💳 Assinar agora'; }
+    }
+}
+
+// Mostra/esconde a importação automática de vendas conforme o plano
+function atualizarGateImportar() {
+    const conteudo = $('importar-conteudo');
+    const bloqueado = $('importar-bloqueado');
+    if (!conteudo || !bloqueado) return;
+    const liberado = isPro();
+    conteudo.style.display = liberado ? '' : 'none';
+    bloqueado.style.display = liberado ? 'none' : '';
 }
 
 async function salvarTaxas() {
@@ -1648,6 +1743,13 @@ function salvarCacheAtual() {
 $('form-prod').onsubmit = async e => {
     e.preventDefault();
     const id = parseInt($('prod-id').value);
+    // Limite do plano gratuito só se aplica a produtos NOVOS (id vazio = insert)
+    if (!id && !isPro() && DB.produtos.length >= LIMITE_PRODUTOS_FREE) {
+        toast(`Plano Gratuito permite até ${LIMITE_PRODUTOS_FREE} produtos. Assine o Pro (R$ 49,90/mês) para cadastrar produtos ilimitados.`, true);
+        fecharModal('mod-prod');
+        document.querySelector('[data-p="config"]').click();
+        return;
+    }
     const data = {
         nome: $('prod-nome').value,
         cat: $('prod-cat').value,
@@ -1909,6 +2011,8 @@ function renderAll() {
         renderChartCMV();
         renderHistorico();
         preencherSelectVendas();
+        atualizarGateImportar();
+        renderPlanoInfo();
     } catch(e) {
         console.error('Erro renderAll:', e);
     }
@@ -2953,6 +3057,18 @@ setTimeout(async () => {
         }
     }
 }, 5000);
+
+// Retorno do checkout do Mercado Pago (back_url=?assinatura=sucesso).
+// O pagamento em si já foi feito lá, mas o webhook que confirma o plano Pro
+// pode levar alguns segundos pra chegar — avisamos e recarregamos os dados
+// depois de um tempinho pra já mostrar "Pro" assim que possível.
+if (new URLSearchParams(window.location.search).get('assinatura') === 'sucesso') {
+    window.history.replaceState({}, '', window.location.pathname); // limpa o parâmetro da URL
+    setTimeout(() => {
+        toast('Pagamento recebido! Confirmando sua assinatura Pro...');
+        setTimeout(() => { if (currentUser) loadAll(true); }, 4000);
+    }, 800);
+}
 </script>
 </body>
 </html>
