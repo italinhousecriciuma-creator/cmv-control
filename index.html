@@ -258,6 +258,7 @@ td{font-size:0.9rem;}
         <button class="nav-btn" data-p="importar">📥 Importar</button>
         <button class="nav-btn" data-p="analise">📈 Análise</button>
         <button class="nav-btn" data-p="config">⚙️ Config</button>
+        <button class="nav-btn" data-p="contato">✉️ Contato</button>
     </nav>
     
     <main class="main">
@@ -360,7 +361,7 @@ td{font-size:0.9rem;}
                     <input type="text" id="cfg-restaurante" placeholder="Nome do restaurante">
                 </div>
                 <button class="btn btn-p" onclick="salvarPerfil()">💾 Salvar Nome</button>
-                
+
                 <div class="section-title" style="margin-top:1.5rem;">💰 Taxas para Cálculo do CMV</div>
                 <div class="alert info">As taxas são somadas ao custo dos ingredientes para calcular o CMV real.</div>
                 <div class="form-row" style="max-width:600px;">
@@ -390,6 +391,18 @@ td{font-size:0.9rem;}
                 <div id="plano-info" style="padding:1rem;background:var(--bg);border-radius:8px;"></div>
             </div>
         </div>
+
+        <div class="page" id="p-contato">
+            <div class="card" style="max-width:520px;">
+                <div class="card-title" style="margin-bottom:1rem;">✉️ Contato</div>
+                <p style="color:var(--txt2);margin-bottom:1.25rem;">Encontrou algum erro no sistema, tem dúvidas sobre o funcionamento, cobrança ou sua assinatura? Fale com a gente:</p>
+                <div style="display:flex;align-items:center;gap:0.75rem;padding:1rem;background:var(--bg3);border-radius:8px;">
+                    <span style="font-size:1.5rem;">📧</span>
+                    <a href="mailto:cmvcontrol@gmail.com" style="color:var(--blue);font-weight:600;font-size:1.05rem;text-decoration:none;">cmvcontrol@gmail.com</a>
+                </div>
+                <p style="color:var(--txt3);font-size:0.8rem;margin-top:1rem;">Respondemos o mais rápido possível. Para dúvidas sobre pagamento, inclua o e-mail usado no cadastro para agilizar o atendimento.</p>
+            </div>
+        </div>
     </main>
 </div>
 
@@ -405,6 +418,29 @@ td{font-size:0.9rem;}
 <div class="modal-bg" id="mod-ing"><div class="modal"><div class="modal-head"><h3>Ingrediente</h3><button class="modal-close" onclick="fecharModal('mod-ing')">×</button></div><form id="form-ing"><input type="hidden" id="ing-id"><div class="field"><label>Nome *</label><input type="text" id="ing-nome" required></div><div class="form-row"><div class="field"><label>Unidade</label><select id="ing-un"><option value="kg" selected>kg</option><option value="L">L</option><option value="un">un</option></select></div><div class="field"><label>Custo/Un</label><input type="number" id="ing-custo" step="0.01" min="0"></div></div><div class="field"><label>Fornecedor</label><input type="text" id="ing-forn" placeholder="Opcional"></div><button type="submit" class="btn btn-p" style="width:100%;margin-top:0.5rem;">💾 Salvar</button></form></div></div>
 
 <div class="modal-bg" id="mod-sub"><div class="modal"><div class="modal-head"><h3>Sub-Receita</h3><button class="modal-close" onclick="fecharModal('mod-sub')">×</button></div><form id="form-sub"><input type="hidden" id="sub-id"><div class="field"><label>Nome *</label><input type="text" id="sub-nome" placeholder="Ex: Molho Vermelho" required></div><div class="alert info" style="font-size:0.8rem;">💡 O <strong>rendimento</strong> é quanto a receita produz no total (ex: 1200g de molho). Serve para calcular o custo por unidade.</div><div class="form-row"><div class="field"><label>Rendimento *</label><input type="number" id="sub-rend" step="0.01" min="0.01" required></div><div class="field"><label>Unidade</label><select id="sub-rend-un"><option value="g" selected>g</option><option value="ml">ml</option><option value="un">un</option></select></div></div><button type="submit" class="btn btn-p" style="width:100%;margin-top:0.9rem;">💾 Salvar</button></form></div></div>
+
+<div class="modal-bg" id="mod-termos"><div class="modal" style="max-width:640px;"><div class="modal-head"><h3>📄 Termos de Uso e Política de Privacidade</h3><button class="modal-close" onclick="fecharModal('mod-termos')">×</button></div><div class="modal-body" style="font-size:0.85rem;color:var(--txt2);line-height:1.6;max-height:60vh;overflow-y:auto;">
+<div class="alert info" style="font-size:0.78rem;margin-bottom:1rem;">Este é um resumo dos termos que regem o uso do CMV Control e a assinatura do Plano Pro. Recomendamos que o dono do negócio faça revisão com um advogado antes de operar comercialmente com estes termos.</div>
+
+<p style="font-weight:600;color:var(--txt);margin-bottom:0.3rem;">1. Sobre o serviço</p>
+<p style="margin-bottom:0.8rem;">O CMV Control é uma ferramenta de apoio à gestão que calcula estimativas de Custo de Mercadoria Vendida (CMV) a partir dos dados que você cadastra (ingredientes, fichas técnicas, preços e vendas). Os resultados dependem inteiramente da exatidão dos dados informados por você e têm caráter informativo — <strong>não substituem</strong> a orientação de um contador, consultor financeiro ou profissional habilitado. O uso das informações para decisões de precificação, compra ou gestão é de responsabilidade exclusiva do usuário.</p>
+
+<p style="font-weight:600;color:var(--txt);margin-bottom:0.3rem;">2. Assinatura, cobrança e cancelamento</p>
+<p style="margin-bottom:0.8rem;">O Plano Pro custa R$ 49,90/mês, cobrado de forma recorrente e automática via Mercado Pago até que o usuário cancele. Não há fidelidade nem multa por cancelamento: o acesso Pro permanece ativo até o fim do período já pago. O cancelamento pode ser solicitado a qualquer momento pelos canais de atendimento informados no aplicativo.</p>
+
+<p style="font-weight:600;color:var(--txt);margin-bottom:0.3rem;">3. Direito de arrependimento (Art. 49, CDC)</p>
+<p style="margin-bottom:0.8rem;">Por se tratar de contratação eletrônica, você tem direito de desistir da assinatura em até 7 (sete) dias corridos a partir da contratação, com devolução integral dos valores pagos, sem necessidade de justificativa. Esse direito pode ser exercido pelos canais de contato do aplicativo. Pedidos de cancelamento e reembolso reiterados, feitos de forma repetida após novas contratações, poderão ser analisados individualmente à luz da boa-fé (Art. 187 do Código Civil).</p>
+
+<p style="font-weight:600;color:var(--txt);margin-bottom:0.3rem;">4. Seus dados (LGPD)</p>
+<p style="margin-bottom:0.8rem;">Coletamos e-mail, nome do restaurante e os dados operacionais que você cadastra (produtos, ingredientes, custos, vendas) exclusivamente para o funcionamento do serviço. Esses dados não são vendidos a terceiros. Você pode solicitar acesso, correção, exportação ou exclusão dos seus dados a qualquer momento, conforme a Lei Geral de Proteção de Dados (Lei 13.709/2018). Em caso de cancelamento da conta, os dados poderão ser mantidos por um período razoável para cumprimento de obrigações legais e depois excluídos.</p>
+
+<p style="font-weight:600;color:var(--txt);margin-bottom:0.3rem;">5. Disponibilidade e limitação de responsabilidade</p>
+<p style="margin-bottom:0.8rem;">O serviço é fornecido "como está", sem garantia de disponibilidade ininterrupta. Fazemos esforços razoáveis para manter backups e a continuidade do serviço, mas não nos responsabilizamos por perdas decorrentes de indisponibilidade temporária, erros de digitação do próprio usuário, uso indevido da conta ou decisões de negócio tomadas com base nos cálculos do sistema.</p>
+
+<p style="font-weight:600;color:var(--txt);margin-bottom:0.3rem;">6. Alterações destes termos</p>
+<p style="margin-bottom:0;">Estes termos podem ser atualizados; alterações relevantes serão comunicadas dentro do aplicativo. O uso continuado do serviço após uma atualização representa concordância com os novos termos.</p>
+
+</div><div class="modal-body" style="padding-top:0;"><button class="btn btn-p" style="width:100%;" onclick="aceitarTermosNoModal()">✅ Li e aceito — fechar</button></div></div></div>
 
 <div class="modal-bg" id="mod-confirm"><div class="modal" style="max-width:350px;"><div class="modal-body" style="text-align:center;padding:2rem;"><div id="conf-icon" style="font-size:3rem;margin-bottom:1rem;"></div><h3 id="conf-title" style="margin-bottom:0.5rem;"></h3><p id="conf-text" style="color:var(--txt2);margin-bottom:1.5rem;"></p><div style="display:flex;gap:0.75rem;"><button class="btn btn-s" style="flex:1;" onclick="fecharModal('mod-confirm')">Cancelar</button><button class="btn btn-d" style="flex:1;" id="conf-btn">Excluir</button></div></div></div></div>
 
@@ -1413,6 +1449,10 @@ async function excluirTamanho(id) {
 // ========================================
 // PLANO PRO (Mercado Pago) — v13.6.0
 // ========================================
+// Versão vigente dos Termos de Uso — troque este valor sempre que o texto do
+// modal #mod-termos mudar de forma relevante, pra forçar novo aceite.
+const TERMOS_VERSAO = 'v1-2026-08';
+
 function renderPlanoInfo() {
     if (!perfil) return;
     const dataStr = perfil.created_at ? new Date(perfil.created_at).toLocaleDateString('pt-BR') : '-';
@@ -1435,6 +1475,10 @@ function renderPlanoInfo() {
         avisoStatus = '<div class="alert" style="background:rgba(239,68,68,0.15);border:1px solid var(--red);color:var(--red);margin-top:0.75rem;">Sua assinatura Pro foi cancelada.</div>';
     }
 
+    // Se já aceitou esta MESMA versão dos termos antes, pré-marca a caixa (mas o
+    // usuário ainda pode desmarcar). Se a versão dos termos mudou, força novo aceite.
+    const jaAceitouEssaVersao = perfil.termos_aceitos_em && perfil.termos_versao === TERMOS_VERSAO;
+
     $('plano-info').innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;">
             <div><div style="font-weight:600;">Plano Gratuito</div><div style="color:var(--txt3);font-size:0.85rem;">Conta criada em ${dataStr} • limite de ${LIMITE_ITENS_FREE} item por categoria (produtos, sub-receitas, bebidas, sobremesas, extras, ingredientes)</div></div>
@@ -1444,14 +1488,58 @@ function renderPlanoInfo() {
         <div style="margin-top:1rem;padding:1rem;background:var(--bg3);border-radius:8px;">
             <div style="font-weight:600;margin-bottom:0.4rem;">🚀 Assine o Pro — R$ 49,90/mês</div>
             <div style="color:var(--txt2);font-size:0.85rem;margin-bottom:0.75rem;">Itens ilimitados em todas as categorias, importação automática de vendas do iFood/AnotaAi e dashboard completo.</div>
-            <button class="btn btn-p" id="btn-assinar-pro" onclick="assinarPro()">💳 Assinar agora</button>
+            <label style="display:flex;align-items:flex-start;gap:0.5rem;font-size:0.82rem;color:var(--txt2);margin-bottom:0.85rem;cursor:pointer;">
+                <input type="checkbox" id="chk-aceite-termos" ${jaAceitouEssaVersao ? 'checked' : ''} onchange="atualizarBtnAssinar()" style="margin-top:0.15rem;">
+                <span>Li e aceito os <a href="#" onclick="event.preventDefault();abrirModal('mod-termos')" style="color:var(--blue);text-decoration:underline;">Termos de Uso e Política de Privacidade</a>, incluindo cobrança recorrente de R$ 49,90/mês e a política de cancelamento/reembolso.</span>
+            </label>
+            <button class="btn btn-p" id="btn-assinar-pro" onclick="assinarPro()" ${jaAceitouEssaVersao ? '' : 'disabled'}>💳 Assinar agora</button>
         </div>`;
 }
 
+// Habilita/desabilita o botão de assinar conforme a caixa de aceite dos termos
+function atualizarBtnAssinar() {
+    const chk = $('chk-aceite-termos');
+    const btn = $('btn-assinar-pro');
+    if (chk && btn) btn.disabled = !chk.checked;
+}
+
+// Chamado pelo botão "Li e aceito" dentro do próprio modal de termos — marca a
+// caixa de aceite e fecha o modal, como atalho de conveniência.
+function aceitarTermosNoModal() {
+    fecharModal('mod-termos');
+    const chk = $('chk-aceite-termos');
+    if (chk) { chk.checked = true; atualizarBtnAssinar(); }
+}
+
 async function assinarPro() {
+    const chk = $('chk-aceite-termos');
+    if (!chk || !chk.checked) {
+        toast('Você precisa aceitar os Termos de Uso para assinar o Pro.', true);
+        return;
+    }
+
     const btn = $('btn-assinar-pro');
     if (btn) { btn.disabled = true; btn.textContent = 'Gerando link de pagamento...'; }
     try {
+        // Registra o aceite ANTES de gerar o link de pagamento (prova de consentimento
+        // com data/hora, associada ao user_id). Requer as colunas termos_aceitos_em e
+        // termos_versao na tabela "perfis" — ver instruções de migração enviadas.
+        try {
+            const agora = new Date().toISOString();
+            const { error: errTermos } = await sb.from('perfis').update({
+                termos_aceitos_em: agora,
+                termos_versao: TERMOS_VERSAO
+            }).eq('user_id', currentUser.id);
+            if (errTermos) {
+                console.warn('Não foi possível registrar o aceite dos termos (verifique se a migração de colunas foi aplicada):', errTermos.message);
+            } else if (perfil) {
+                perfil.termos_aceitos_em = agora;
+                perfil.termos_versao = TERMOS_VERSAO;
+            }
+        } catch (e) {
+            console.warn('Erro ao registrar aceite dos termos:', e);
+        }
+
         const resp = await fetch('/api/mercadopago/criar-assinatura', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
