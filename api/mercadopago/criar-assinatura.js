@@ -73,7 +73,26 @@ module.exports = async (req, res) => {
             return;
         }
 
-        res.status(200).json({ init_point: data.init_point, preapproval_id: data.id });
+        // --- CONTORNO DE BUG DO MERCADO PAGO (desde ~04/09/2026) ---
+        // O MP passou a devolver o init_point com "&activation=true" (ou
+        // "?activation=true"), e essa URL específica abre uma página de ERRO
+        // no site deles (robô caído), mesmo com preapproval_id válido.
+        // A mesma URL SEM esse parâmetro funciona normalmente.
+        // Ref.: bug reportado em mercadopago/sdk-nodejs#480.
+        // Removemos o parâmetro aqui até o MP corrigir do lado deles.
+        let linkCheckout = data.init_point;
+        try {
+            const u = new URL(linkCheckout);
+            u.searchParams.delete('activation');
+            linkCheckout = u.toString();
+        } catch (_) {
+            // Fallback caso não seja uma URL parseável: remove por regex.
+            linkCheckout = linkCheckout
+                .replace(/([?&])activation=true&?/i, '$1')
+                .replace(/[?&]$/, '');
+        }
+
+        res.status(200).json({ init_point: linkCheckout, preapproval_id: data.id });
     } catch (e) {
         console.error('Erro inesperado em criar-assinatura:', e);
         res.status(500).json({ error: 'Erro inesperado ao criar assinatura.' });
